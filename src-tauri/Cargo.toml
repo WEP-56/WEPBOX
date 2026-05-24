@@ -1,0 +1,24 @@
+[package]
+name = "simple-singbox-client"
+version = "0.1.0"
+description = "A minimal sing-box desktop client backend"
+authors = ["wepbox"]
+edition = "2021"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+anyhow = "1"
+base64 = "0.22"
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+serde_yaml = "0.9"
+tauri = { version = "2", features = ["tray-icon", "image-ico"] }
+tauri-plugin-shell = "2"
+tokio = { version = "1", features = ["sync", "time"] }
+url = "2"
+urlencoding = "2"
+uuid = { version = "1", features = ["v4", "serde"] }
+windows-sys = { version = "0.59", features = ["Win32_Foundation", "Win32_UI_Shell", "Win32_UI_WindowsAndMessaging", "Win32_Networking_WinInet", "Win32_System_Registry"] }

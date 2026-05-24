@@ -1,0 +1,846 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Next-Gen Proxy Client</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/tabler-icons.min.css">
+  <link rel="stylesheet" href="./styles/app.css">
+</head>
+<body class="theme-mint">
+
+<div class="app">
+  <div class="titlebar" data-tauri-drag-region>
+    <div class="titlebar-brand" data-tauri-drag-region>
+      <span class="titlebar-mark"></span>
+      <span data-tauri-drag-region>代理客户端</span>
+    </div>
+    <div class="window-actions">
+      <button class="window-btn" onclick="enterBackgroundMode()" aria-label="轻量后台模式" title="隐藏到后台"><i class="ti ti-layout-sidebar-left-collapse"></i></button>
+      <button class="window-btn" onclick="minimizeWindow()" aria-label="最小化"><i class="ti ti-minus"></i></button>
+      <button class="window-btn" onclick="toggleMaximizeWindow()" aria-label="最大化"><i class="ti ti-square"></i></button>
+      <button class="window-btn close" onclick="closeWindow()" aria-label="关闭"><i class="ti ti-x"></i></button>
+    </div>
+  </div>
+
+  <div class="sidebar">
+    <div class="logo"><i class="ti ti-shield-bolt"></i></div>
+    <button class="nb on" onclick="go('home')" aria-label="首页"><i class="ti ti-home"></i></button>
+    <button class="nb" onclick="go('nodes')" aria-label="节点"><i class="ti ti-server"></i></button>
+    <button class="nb" onclick="go('subscriptions')" aria-label="订阅"><i class="ti ti-link"></i></button>
+    <button class="nb" onclick="go('settings')" aria-label="设置"><i class="ti ti-settings"></i></button>
+  </div>
+
+  <div class="content">
+    <div class="pg on" id="pg-home">
+      <div class="home-shell">
+        <div class="card home-control-bar" id="core-control-card">
+          <div class="home-control-main">
+            <div class="home-control-kicker">核心控制</div>
+            <div class="home-control-status">
+              <div class="home-control-title" id="proxy-label">代理服务已关闭</div>
+              <div class="home-control-sub" id="proxy-node">等待启动内核</div>
+            </div>
+          </div>
+          <div class="home-control-meta">
+            <span class="hero-chip">混合端口 <strong id="home-port">7890</strong></span>
+            <span class="hero-chip">本月流量 <strong>64.2 / 200G</strong></span>
+            <span class="hero-chip">节点页负责切换分组与测速</span>
+          </div>
+          <div class="home-control-action">
+            <button class="big-tog" id="main-tog" onclick="toggleProxy()" aria-label="代理开关"></button>
+          </div>
+        </div>
+
+        <div>
+          <div class="sec-label">快速模式</div>
+          <div class="home-mode-grid">
+            <button class="quick-mode-card" id="tun-mode-btn" onclick="toggleTun()" aria-label="切换 TUN 模式">
+              <div class="quick-mode-icon"><i class="ti ti-network"></i></div>
+              <div class="quick-mode-name">TUN</div>
+              <div class="quick-mode-desc" id="tun-sub">关闭 · 仅代理端口生效</div>
+            </button>
+            <button class="quick-mode-card on" data-mode="rule" onclick="setMode(this, 'rule')">
+              <div class="quick-mode-icon"><i class="ti ti-adjustments-horizontal"></i></div>
+              <div class="quick-mode-name">规则</div>
+              <div class="quick-mode-desc">按策略分流</div>
+            </button>
+            <button class="quick-mode-card" data-mode="global" onclick="setMode(this, 'global')">
+              <div class="quick-mode-icon"><i class="ti ti-world"></i></div>
+              <div class="quick-mode-name">全局</div>
+              <div class="quick-mode-desc">接管流量全部走代理</div>
+            </button>
+            <button class="quick-mode-card" data-mode="direct" onclick="setMode(this, 'direct')">
+              <div class="quick-mode-icon"><i class="ti ti-plug-connected-x"></i></div>
+              <div class="quick-mode-name">直连</div>
+              <div class="quick-mode-desc">绕过代理</div>
+            </button>
+          </div>
+        </div>
+
+        <div class="home-bottom-grid">
+          <div>
+            <div class="sec-label">运行概览</div>
+            <div class="card overview-list-card">
+              <div class="overview-item">
+                <div class="overview-copy">
+                  <div class="overview-label">实时上传</div>
+                  <div class="overview-hint">当前出口上行速率</div>
+                </div>
+                <div class="overview-value" id="up-speed">0.0 <span class="su">MB/s</span></div>
+              </div>
+              <div class="overview-item">
+                <div class="overview-copy">
+                  <div class="overview-label">实时下载</div>
+                  <div class="overview-hint">当前入口下行速率</div>
+                </div>
+                <div class="overview-value" id="dn-speed">0.0 <span class="su">MB/s</span></div>
+              </div>
+              <div class="overview-item">
+                <div class="overview-copy">
+                  <div class="overview-label">内核负载</div>
+                  <div class="overview-hint">sidecar 当前 CPU 占用</div>
+                </div>
+                <div class="overview-metric">
+                  <div class="overview-inline" id="cpu-val">0%</div>
+                  <div class="progress-bar slim"><div class="progress-inner" id="cpu-bar"></div></div>
+                </div>
+              </div>
+              <div class="overview-item">
+                <div class="overview-copy">
+                  <div class="overview-label">内存占用</div>
+                  <div class="overview-hint">运行时内存占比</div>
+                </div>
+                <div class="overview-metric">
+                  <div class="overview-inline" id="mem-val">0%</div>
+                  <div class="progress-bar slim"><div class="progress-inner" id="mem-bar"></div></div>
+                </div>
+              </div>
+              <div class="overview-item">
+                <div class="overview-copy">
+                  <div class="overview-label">并发连接</div>
+                  <div class="overview-hint">当前活跃连接数估计</div>
+                </div>
+                <div class="overview-value mono" id="conn-count">0</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="home-side-stack">
+            <div>
+              <div class="sec-label">速率趋势</div>
+              <div class="card chart-card">
+                <div class="chart-card-head">
+                  <div>
+                    <div class="chart-title">近 12 个采样点</div>
+                    <div class="chart-sub">悬停查看任一点上传 / 下载速率</div>
+                  </div>
+                  <div class="chart-hover-stats">
+                    <span id="chart-hover-time">当前</span>
+                    <strong id="chart-hover-down">下载 0.0 MB/s</strong>
+                    <span id="chart-hover-up">上传 0.0 MB/s</span>
+                  </div>
+                </div>
+                <div class="traffic-chart-shell">
+                  <div class="chart-scale">
+                    <span id="chart-scale-max">3.0 MB/s</span>
+                    <span id="chart-scale-mid">1.5 MB/s</span>
+                    <span>0</span>
+                  </div>
+                  <div class="chart-panel" id="traffic-chart-panel">
+                    <svg viewBox="0 0 560 168" preserveAspectRatio="none" class="traffic-chart">
+                      <defs>
+                        <linearGradient id="chart-gradient" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="0%" stop-color="var(--accent)" stop-opacity="0.26"/>
+                          <stop offset="100%" stop-color="var(--accent)" stop-opacity="0"/>
+                        </linearGradient>
+                      </defs>
+                      <path class="chart-grid-path" d="M 0 24 H 560"></path>
+                      <path class="chart-grid-path" d="M 0 84 H 560"></path>
+                      <path class="chart-grid-path" d="M 0 144 H 560"></path>
+                      <path id="graph-down-fill" class="live-chart-fill" d="M 0 144 L 560 144 Z"></path>
+                      <path id="graph-down-path" class="live-chart-path" d="M 0 144 L 560 144"></path>
+                      <path id="graph-up-path" class="live-chart-path secondary" d="M 0 144 L 560 144"></path>
+                      <line id="chart-hover-line" x1="0" y1="16" x2="0" y2="148" class="chart-hover-line"></line>
+                      <circle id="chart-hover-dot-down" cx="0" cy="144" r="4" class="chart-hover-dot"></circle>
+                      <circle id="chart-hover-dot-up" cx="0" cy="144" r="4" class="chart-hover-dot secondary"></circle>
+                    </svg>
+                    <div class="chart-axis-x">
+                      <span>12 秒前</span>
+                      <span>现在</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div>
+              <div class="sec-label">运行日志</div>
+              <div class="card log-card">
+                <button class="log-card-head" id="log-toggle" onclick="toggleLogExpanded()" aria-expanded="false">
+                  <span>默认仅显示最新一行</span>
+                  <span id="log-toggle-label">展开</span>
+                </button>
+                <div class="log-terminal collapsed" id="log-box">
+                  <div class="log-line">[INFO] sing-box core infrastructure initialized successfully.</div>
+                  <div class="log-line">[INFO] inbound/mixed[mixed-in]: inbound service protocol listening on 127.0.0.1:7890</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="pg" id="pg-nodes">
+      <div class="header-row">
+        <div class="search-bar" style="flex:1; margin-right:12px">
+          <i class="ti ti-search" style="color:var(--text-secondary)"></i>
+          <input id="node-search-input" type="text" placeholder="输入关键字搜索节点或分组..." oninput="filterNodes(this.value)">
+        </div>
+        <button class="test-btn" onclick="testAll()">
+          <i class="ti ti-activity" id="test-icon"></i> 整体测速
+        </button>
+      </div>
+
+      <div>
+        <div class="sec-label">当前订阅范围</div>
+        <div class="card node-source-card">
+          <div class="chip-row" id="node-source-bar">
+            <span class="sub-chip"><strong>等待</strong> 请选择订阅</span>
+          </div>
+        </div>
+      </div>
+
+      <div>
+        <div class="sec-label">代理分组</div>
+        <div class="card">
+          <div class="node-toolbar">
+            <div class="node-stats">
+              <div class="node-stat">
+                <div class="k">已选订阅</div>
+                <div class="v" id="selected-sub-count">0</div>
+              </div>
+              <div class="node-stat">
+                <div class="k">代理分组</div>
+                <div class="v" id="available-node-count">0</div>
+              </div>
+              <div class="node-stat">
+                <div class="k">当前焦点</div>
+                <div class="v" id="active-group-name">PROXY</div>
+              </div>
+            </div>
+          </div>
+          <div class="proxy-groups-board node-list-container" id="node-list">
+            <div class="proxy-group-card">
+              <div class="proxy-group-head">
+                <div class="proxy-group-copy">
+                  <div class="proxy-group-title-row">
+                    <div class="proxy-group-title">PROXY</div>
+                    <span class="proxy-group-pill">Selector</span>
+                    <span class="proxy-group-pill count">0 节点</span>
+                  </div>
+                  <div class="proxy-group-sub">当前节点：等待读取</div>
+                </div>
+              </div>
+              <div class="proxy-group-body">
+                <div class="proxy-node-grid">
+                  <div class="proxy-node-card active">
+                    <div class="proxy-node-card-name">等待读取节点</div>
+                    <div class="proxy-node-card-meta">启动内核并刷新后，这里会显示分组与节点。</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="pg" id="pg-subscriptions">
+      <div>
+        <div class="sec-label">订阅管理</div>
+        <div class="card" id="subscription-list">
+          <div class="sub-row">
+            <div class="sub-copy">
+              <div class="rn">尚未导入订阅</div>
+              <div class="rs">粘贴 Clash / V2Ray / sing-box 订阅链接后会在这里显示。</div>
+            </div>
+            <span class="badge ba">等待</span>
+          </div>
+        </div>
+        <div class="add-row" onclick="showModal()">
+          <i class="ti ti-plus"></i>
+          <div>
+            <div class="rn">导入新的订阅来源</div>
+            <div class="rs">支持远程订阅链接，也支持直接粘贴节点文本。</div>
+          </div>
+        </div>
+      </div>
+
+      <div>
+        <div class="sec-label">当前启用范围</div>
+        <div class="card" style="padding:14px 16px">
+          <div class="chip-row" id="subscription-source-summary">
+            <span class="sub-chip"><strong>未选择订阅</strong> 去勾选要参与代理的订阅来源</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="pg" id="pg-settings">
+      <div class="settings-shell">
+        <div class="settings-overview card">
+          <div>
+            <div class="settings-title">设置页重构中</div>
+            <div class="settings-subtitle">按“常规 / 代理 / DNS-TUN / 订阅转换 / 运行维护”拆分。每项都明确标注是否已真实接入。</div>
+          </div>
+          <div class="settings-nav">
+            <button class="settings-nav-btn" onclick="scrollToSettingsSection('general')">常规</button>
+            <button class="settings-nav-btn" onclick="scrollToSettingsSection('proxy')">代理</button>
+            <button class="settings-nav-btn" onclick="scrollToSettingsSection('advanced')">DNS / TUN</button>
+            <button class="settings-nav-btn" onclick="scrollToSettingsSection('subscription')">订阅转换</button>
+            <button class="settings-nav-btn" onclick="scrollToSettingsSection('maintenance')">运行维护</button>
+          </div>
+        </div>
+
+        <section class="settings-section" id="settings-section-general">
+          <div class="sec-label">常规设置</div>
+          <div class="settings-section-intro">控制应用启动行为、窗口行为和异常提示。优先保留普通用户能直接理解的选项。</div>
+          <div class="card">
+            <div class="row">
+              <div class="row-l">
+                <i class="ti ti-player-play ri"></i>
+                <div>
+                  <div class="rn">开机自动运行</div>
+                  <div class="rs">写入 Windows `Run` 注册表项，随系统登录启动客户端。</div>
+                </div>
+              </div>
+              <div class="setting-actions">
+                <span class="setting-badge live">已接入</span>
+                <button class="tog" id="auto-launch-tog" onclick="toggleSetting('autoLaunch')"></button>
+              </div>
+            </div>
+            <div class="row">
+              <div class="row-l">
+                <i class="ti ti-bolt ri"></i>
+                <div>
+                  <div class="rn">应用启动后自动拉起内核</div>
+                  <div class="rs">应用打开后自动启动 sing-box，无需再点首页总开关。</div>
+                </div>
+              </div>
+              <div class="setting-actions">
+                <span class="setting-badge live">已接入</span>
+                <button class="tog" id="auto-start-proxy-tog" onclick="toggleSetting('autoStartProxy')"></button>
+              </div>
+            </div>
+            <div class="row">
+              <div class="row-l">
+                <i class="ti ti-layout-sidebar-left-collapse ri"></i>
+                <div>
+                  <div class="rn">启动时隐藏主窗口</div>
+                  <div class="rs">适合自启动场景。应用会直接进入后台，再通过托盘调出。</div>
+                </div>
+              </div>
+              <div class="setting-actions">
+                <span class="setting-badge live">已接入</span>
+                <button class="tog" id="start-hidden-tog" onclick="toggleSetting('startHidden')"></button>
+              </div>
+            </div>
+            <div class="row">
+              <div class="row-l">
+                <i class="ti ti-app-window ri"></i>
+                <div>
+                  <div class="rn">关闭窗口时隐藏到托盘</div>
+                  <div class="rs">避免误关应用。真正退出请用托盘菜单里的“退出”。</div>
+                </div>
+              </div>
+              <div class="setting-actions">
+                <span class="setting-badge live">已接入</span>
+                <button class="tog" id="hide-to-tray-tog" onclick="toggleSetting('hideToTray')"></button>
+              </div>
+            </div>
+            <div class="row">
+              <div class="row-l">
+                <i class="ti ti-bell-ringing ri"></i>
+                <div>
+                  <div class="rn">异常退出时通知</div>
+                  <div class="rs">内核异常退出并回退到安全状态时，在界面上弹出提示。</div>
+                </div>
+              </div>
+              <div class="setting-actions">
+                <span class="setting-badge live">已接入</span>
+                <button class="tog" id="notify-on-failure-tog" onclick="toggleSetting('notifyOnFailure')"></button>
+              </div>
+            </div>
+            <div class="row">
+              <div class="row-l">
+                <i class="ti ti-device-desktop ri"></i>
+                <div>
+                  <div class="rn">跟随系统主题</div>
+                  <div class="rs">当前仅保存偏好，主题切换链路尚未接到完整桌面外观系统。</div>
+                </div>
+              </div>
+              <div class="setting-actions">
+                <span class="setting-badge pending">待接入</span>
+                <button class="tog" id="follow-system-theme-tog" onclick="toggleSetting('followSystemTheme', { pendingOnly: true })"></button>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section class="settings-section" id="settings-section-proxy">
+          <div class="sec-label">代理设置</div>
+          <div class="settings-section-intro">这里是会直接进入 `config.json` 或影响系统代理行为的核心设置。</div>
+          <div class="card">
+            <div class="row">
+              <div class="row-l">
+                <i class="ti ti-plug-connected ri"></i>
+                <div>
+                  <div class="rn">本地 Mixed 端口</div>
+                  <div class="rs">HTTP / SOCKS 混合入口。非 TUN 模式下也会被用于设置系统代理。</div>
+                </div>
+              </div>
+              <div class="setting-actions">
+                <span class="setting-badge live">已接入</span>
+                <input class="setting-input short" id="local-mixed-port-input" inputmode="numeric" placeholder="7890" onchange="updatePortSetting('localMixedPort', this.value)">
+              </div>
+            </div>
+            <div class="row">
+              <div class="row-l">
+                <i class="ti ti-api ri"></i>
+                <div>
+                  <div class="rn">Clash API 端口</div>
+                  <div class="rs">节点页、测速和运行探活依赖的控制端口。</div>
+                </div>
+              </div>
+              <div class="setting-actions">
+                <span class="setting-badge live">已接入</span>
+                <input class="setting-input short" id="clash-api-port-input" inputmode="numeric" placeholder="9090" onchange="updatePortSetting('clashApiPort', this.value)">
+              </div>
+            </div>
+            <div class="row">
+              <div class="row-l">
+                <i class="ti ti-key ri"></i>
+                <div>
+                  <div class="rn">Clash API Secret</div>
+                  <div class="rs">用于本地 Clash API 鉴权。留空时后端会自动生成新的随机值。</div>
+                </div>
+              </div>
+              <div class="setting-actions wide">
+                <span class="setting-badge live">已接入</span>
+                <input class="setting-input" id="clash-api-secret-input" placeholder="自动生成或自定义 secret" onchange="updateTextSetting('clashApiSecret', this.value, { nullable: false, restartCore: true })">
+              </div>
+            </div>
+            <div class="row">
+              <div class="row-l">
+                <i class="ti ti-devices-share ri"></i>
+                <div>
+                  <div class="rn">允许局域网连接</div>
+                  <div class="rs">把 Mixed 监听地址从 `127.0.0.1` 改为 `0.0.0.0`，便于局域网其他设备接入。</div>
+                </div>
+              </div>
+              <div class="setting-actions">
+                <span class="setting-badge live">已接入</span>
+                <button class="tog" id="allow-lan-tog" onclick="toggleSetting('allowLan')"></button>
+              </div>
+            </div>
+            <div class="row row-stack">
+              <div class="row-l">
+                <i class="ti ti-route ri"></i>
+                <div>
+                  <div class="rn">路由模式</div>
+                  <div class="rs">规则 / 全局 / 直连 决定 `route.final` 和整体流量出口策略。</div>
+                </div>
+              </div>
+              <div class="settings-mode-switch">
+                <button class="settings-mode-btn" data-mode="rule" onclick="setMode(this, 'rule')">规则</button>
+                <button class="settings-mode-btn" data-mode="global" onclick="setMode(this, 'global')">全局</button>
+                <button class="settings-mode-btn" data-mode="direct" onclick="setMode(this, 'direct')">直连</button>
+              </div>
+            </div>
+            <div class="row">
+              <div class="row-l">
+                <i class="ti ti-git-fork ri"></i>
+                <div>
+                  <div class="rn">规则模式 fallback</div>
+                  <div class="rs">当规则未命中时，决定默认走 `direct` 还是 `proxy`。</div>
+                </div>
+              </div>
+              <div class="setting-actions">
+                <span class="setting-badge live">已接入</span>
+                <select class="setting-select" id="fallback-select" onchange="updateSelectSetting('fallback', this.value, { restartCore: true })">
+                  <option value="direct">direct</option>
+                  <option value="proxy">proxy</option>
+                </select>
+              </div>
+            </div>
+            <div class="row">
+              <div class="row-l">
+                <i class="ti ti-network ri"></i>
+                <div>
+                  <div class="rn">TUN 开关</div>
+                  <div class="rs">接管系统流量。启用时需要管理员权限，并会关闭系统代理残留。</div>
+                </div>
+              </div>
+              <div class="setting-actions">
+                <span class="setting-badge live">已接入</span>
+                <button class="tog" id="tun-mode-setting-tog" onclick="toggleTun()"></button>
+              </div>
+            </div>
+            <div class="row">
+              <div class="row-l">
+                <i class="ti ti-shield ri"></i>
+                <div>
+                  <div class="rn">DNS 防泄漏</div>
+                  <div class="rs">TUN 模式下劫持 DNS 请求，减少绕过 sing-box 的直连解析。</div>
+                </div>
+              </div>
+              <div class="setting-actions">
+                <span class="setting-badge live">已接入</span>
+                <button class="tog" id="dns-guard-tog" onclick="toggleSetting('dnsGuardEnabled')"></button>
+              </div>
+            </div>
+            <div class="row">
+              <div class="row-l">
+                <i class="ti ti-world ri"></i>
+                <div>
+                  <div class="rn">IPv6</div>
+                  <div class="rs">切换 `prefer_ipv6` / `ipv4_only` 策略，并影响 TUN 地址生成。</div>
+                </div>
+              </div>
+              <div class="setting-actions">
+                <span class="setting-badge live">已接入</span>
+                <button class="tog" id="ipv6-tog" onclick="toggleSetting('ipv6Enabled')"></button>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section class="settings-section" id="settings-section-advanced">
+          <div class="sec-label">DNS / TUN 高级</div>
+          <div class="settings-section-intro">暴露当前架构已经能真正落到配置链里的高级项；未接入项会明确标记。</div>
+          <div class="card">
+            <div class="row" style="align-items:flex-start">
+              <div class="row-l">
+                <i class="ti ti-server-2 ri"></i>
+                <div>
+                  <div class="rn">自定义 DNS Servers</div>
+                  <div class="rs">每行一个地址。第一个优先作为直连 DNS，第二个优先作为远端 DNS。</div>
+                </div>
+              </div>
+              <div class="setting-actions wide top">
+                <span class="setting-badge live">已接入</span>
+                <textarea class="setting-textarea" id="dns-servers-input" placeholder="223.5.5.5&#10;https://1.1.1.1/dns-query" onchange="updateCustomDnsServers(this.value)"></textarea>
+              </div>
+            </div>
+            <div class="row">
+              <div class="row-l">
+                <i class="ti ti-atom-2 ri"></i>
+                <div>
+                  <div class="rn">fake-dns</div>
+                  <div class="rs">默认建议开启。关闭后 TUN 模式将不再生成 fakeip DNS server 和回流规则。</div>
+                </div>
+              </div>
+              <div class="setting-actions">
+                <span class="setting-badge live">已接入</span>
+                <button class="tog" id="fake-dns-tog" onclick="toggleSetting('fakeDnsEnabled', { restartCore: true })"></button>
+              </div>
+            </div>
+            <div class="row">
+              <div class="row-l">
+                <i class="ti ti-chart-dots-3 ri"></i>
+                <div>
+                  <div class="rn">fake-ip IPv4 网段</div>
+                  <div class="rs">默认 `198.18.0.0/15`，用于 fake-dns 返回的 IPv4 地址池。</div>
+                </div>
+              </div>
+              <div class="setting-actions wide">
+                <span class="setting-badge live">已接入</span>
+                <input class="setting-input" id="fake-ipv4-input" placeholder="198.18.0.0/15" onchange="updateTextSetting('fakeIpV4Range', this.value, { nullable: false, restartCore: true })">
+              </div>
+            </div>
+            <div class="row">
+              <div class="row-l">
+                <i class="ti ti-chart-dots-3 ri"></i>
+                <div>
+                  <div class="rn">fake-ip IPv6 网段</div>
+                  <div class="rs">默认 `fc00::/18`，用于 fake-dns 返回的 IPv6 地址池。</div>
+                </div>
+              </div>
+              <div class="setting-actions wide">
+                <span class="setting-badge live">已接入</span>
+                <input class="setting-input" id="fake-ipv6-input" placeholder="fc00::/18" onchange="updateTextSetting('fakeIpV6Range', this.value, { nullable: false, restartCore: true })">
+              </div>
+            </div>
+            <div class="row">
+              <div class="row-l">
+                <i class="ti ti-device-sim ri"></i>
+                <div>
+                  <div class="rn">TUN Interface Name</div>
+                  <div class="rs">写入 `tun-in.interface_name`。Windows 网络设备列表里会显示这个名称。</div>
+                </div>
+              </div>
+              <div class="setting-actions wide">
+                <span class="setting-badge live">已接入</span>
+                <input class="setting-input" id="tun-interface-name-input" placeholder="singbox_tun" onchange="updateTextSetting('tunInterfaceName', this.value, { nullable: false, restartCore: true })">
+              </div>
+            </div>
+            <div class="row">
+              <div class="row-l">
+                <i class="ti ti-ruler ri"></i>
+                <div>
+                  <div class="rn">TUN MTU</div>
+                  <div class="rs">写入 `tun-in.mtu`。过小或过大都可能影响吞吐和兼容性。</div>
+                </div>
+              </div>
+              <div class="setting-actions">
+                <span class="setting-badge live">已接入</span>
+                <input class="setting-input short" id="tun-mtu-input" inputmode="numeric" placeholder="1500" onchange="updateNumericSetting('tunMtu', this.value, { restartCore: true, invalidMessage: '请输入有效 MTU。' })">
+              </div>
+            </div>
+            <div class="row">
+              <div class="row-l">
+                <i class="ti ti-direction-sign ri"></i>
+                <div>
+                  <div class="rn">auto_route</div>
+                  <div class="rs">让 sing-box 自动下发路由。关闭前请确认你知道自己在做什么。</div>
+                </div>
+              </div>
+              <div class="setting-actions">
+                <span class="setting-badge live">已接入</span>
+                <button class="tog" id="tun-auto-route-tog" onclick="toggleSetting('tunAutoRoute', { restartCore: true })"></button>
+              </div>
+            </div>
+            <div class="row">
+              <div class="row-l">
+                <i class="ti ti-lock-access ri"></i>
+                <div>
+                  <div class="rn">strict_route</div>
+                  <div class="rs">更严格地限制流量必须按 TUN 路由走。错误配置可能导致网络完全失联。</div>
+                </div>
+              </div>
+              <div class="setting-actions">
+                <span class="setting-badge live">已接入</span>
+                <button class="tog" id="tun-strict-route-tog" onclick="toggleSetting('tunStrictRoute', { restartCore: true })"></button>
+              </div>
+            </div>
+            <div class="row" style="align-items:flex-start">
+              <div class="row-l">
+                <i class="ti ti-list-details ri"></i>
+                <div>
+                  <div class="rn">私有网段排除列表</div>
+                  <div class="rs">写入 `route_exclude_address`。每行一个 CIDR，默认保留局域网和链路本地地址。</div>
+                </div>
+              </div>
+              <div class="setting-actions wide top">
+                <span class="setting-badge live">已接入</span>
+                <textarea class="setting-textarea" id="tun-route-exclude-input" placeholder="192.168.0.0/16&#10;10.0.0.0/8" onchange="updateRouteExcludeAddresses(this.value)"></textarea>
+              </div>
+            </div>
+            <div class="row">
+              <div class="row-l">
+                <i class="ti ti-brand-socket-io ri"></i>
+                <div>
+                  <div class="rn">UDP 加速</div>
+                  <div class="rs">当前仅保存偏好，尚未进入 sing-box 生成链。</div>
+                </div>
+              </div>
+              <div class="setting-actions">
+                <span class="setting-badge pending">待接入</span>
+                <button class="tog" id="udp-acceleration-tog" onclick="toggleSetting('udpAccelerationEnabled', { pendingOnly: true })"></button>
+              </div>
+            </div>
+            <div class="row">
+              <div class="row-l">
+                <i class="ti ti-rocket ri"></i>
+                <div>
+                  <div class="rn">实验性 QUIC 优化</div>
+                  <div class="rs">当前仅保存偏好，未来如果扩 sing-box 传输细项时再接入。</div>
+                </div>
+              </div>
+              <div class="setting-actions">
+                <span class="setting-badge pending">待接入</span>
+                <button class="tog" id="experimental-quic-tog" onclick="toggleSetting('experimentalQuic', { pendingOnly: true })"></button>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section class="settings-section" id="settings-section-subscription">
+          <div class="sec-label">订阅与转换</div>
+          <div class="settings-section-intro">导入、转换和后台策略会集中到这里。当前只暴露已经能解释清楚的入口。</div>
+          <div class="card">
+            <div class="row">
+              <div class="row-l">
+                <i class="ti ti-exchange ri"></i>
+                <div>
+                  <div class="rn">Converter URL</div>
+                  <div class="rs">当本地无法识别订阅格式时，远程转换为 sing-box JSON 的备用服务。</div>
+                </div>
+              </div>
+              <div class="setting-actions wide">
+                <span class="setting-badge live">已接入</span>
+                <input class="setting-input" id="converter-url-input" placeholder="https://converter.example.com" onchange="updateTextSetting('converterUrl', this.value)">
+              </div>
+            </div>
+            <div class="row">
+              <div class="row-l">
+                <i class="ti ti-refresh ri"></i>
+                <div>
+                  <div class="rn">订阅自动更新间隔</div>
+                  <div class="rs">当前仅保存偏好，后台定时刷新任务尚未接入。</div>
+                </div>
+              </div>
+              <div class="setting-actions">
+                <span class="setting-badge pending">待接入</span>
+                <select class="setting-select" id="auto-update-hours" onchange="updateNumericSetting('autoUpdateHours', this.value, { pendingOnly: true })">
+                  <option value="0">关闭</option>
+                  <option value="6">每 6 小时</option>
+                  <option value="12">每 12 小时</option>
+                  <option value="24">每天</option>
+                </select>
+              </div>
+            </div>
+            <div class="row">
+              <div class="row-l">
+                <i class="ti ti-activity-heartbeat ri"></i>
+                <div>
+                  <div class="rn">测速计划</div>
+                  <div class="rs">当前仅保存偏好，后台自动测速与任务调度尚未接入。</div>
+                </div>
+              </div>
+              <div class="setting-actions">
+                <span class="setting-badge pending">待接入</span>
+                <select class="setting-select" id="speed-test-interval" onchange="updateSelectSetting('speedTestInterval', this.value, { pendingOnly: true })">
+                  <option value="never">从不</option>
+                  <option value="every30Minutes">每 30 分钟</option>
+                  <option value="every1Hour">每 1 小时</option>
+                  <option value="every24Hours">每天</option>
+                </select>
+              </div>
+            </div>
+            <div class="row">
+              <div class="row-l">
+                <i class="ti ti-bolt-filled ri"></i>
+                <div>
+                  <div class="rn">自动选择最快节点</div>
+                  <div class="rs">当前仅保存偏好，尚未接入后台自动优选策略。</div>
+                </div>
+              </div>
+              <div class="setting-actions">
+                <span class="setting-badge pending">待接入</span>
+                <button class="tog" id="auto-select-fastest-tog" onclick="toggleSetting('autoSelectFastest', { pendingOnly: true })"></button>
+              </div>
+            </div>
+            <div class="row">
+              <div class="row-l">
+                <i class="ti ti-route-alt-left ri"></i>
+                <div>
+                  <div class="rn">故障时自动切换</div>
+                  <div class="rs">当前仅保存偏好，尚未接入链路失败自动切换策略。</div>
+                </div>
+              </div>
+              <div class="setting-actions">
+                <span class="setting-badge pending">待接入</span>
+                <button class="tog" id="auto-switch-on-failure-tog" onclick="toggleSetting('autoSwitchOnFailure', { pendingOnly: true })"></button>
+              </div>
+            </div>
+            <div class="settings-note">
+              当前订阅策略固定为：导入、刷新、删除订阅时，如果内核运行中，会自动重写配置并重载内核；手动导入的节点不支持远程刷新。
+            </div>
+          </div>
+        </section>
+
+        <section class="settings-section" id="settings-section-maintenance">
+          <div class="sec-label">运行维护</div>
+          <div class="settings-section-intro">提供排障、清理和诊断导出入口，优先补对稳定性与回收有帮助的能力。</div>
+          <div class="card">
+            <div class="row">
+              <div class="row-l">
+                <i class="ti ti-box ri"></i>
+                <div>
+                  <div class="rn">sing-box 内核版本</div>
+                  <div class="rs">通过 sidecar 实时查询，不再写死在前端。</div>
+                </div>
+              </div>
+              <div class="setting-actions">
+                <span class="setting-badge live">已接入</span>
+                <span class="setting-value" id="maintenance-sidecar-version">等待后端连接</span>
+              </div>
+            </div>
+            <div class="row row-stack">
+              <div class="row-l">
+                <i class="ti ti-folders ri"></i>
+                <div>
+                  <div class="rn">当前路径与运行数据</div>
+                  <div class="rs">用于确认 app data、配置、日志和 runtime marker 的实际位置。</div>
+                </div>
+              </div>
+              <div class="settings-path-grid">
+                <div class="settings-path-item"><span>App Data</span><code id="maintenance-app-data-path">等待后端连接</code></div>
+                <div class="settings-path-item"><span>Settings</span><code id="maintenance-settings-path">等待后端连接</code></div>
+                <div class="settings-path-item"><span>Config</span><code id="maintenance-config-path">等待后端连接</code></div>
+                <div class="settings-path-item"><span>Log</span><code id="maintenance-log-path">等待后端连接</code></div>
+                <div class="settings-path-item"><span>Runtime Marker</span><code id="maintenance-runtime-path">等待后端连接</code></div>
+                <div class="settings-path-item"><span>Subscriptions</span><code id="maintenance-subscription-path">等待后端连接</code></div>
+              </div>
+            </div>
+            <div class="row row-stack">
+              <div class="row-l">
+                <i class="ti ti-tool ri"></i>
+                <div>
+                  <div class="rn">维护动作</div>
+                  <div class="rs">这些动作会直接调用后端命令，适合排障或清理异常残留时使用。</div>
+                </div>
+              </div>
+              <div class="settings-action-grid">
+                <button class="ghost-mini" onclick="openAppDataDir()">打开应用数据目录</button>
+                <button class="ghost-mini" onclick="openLogDir()">打开日志目录</button>
+                <button class="ghost-mini" onclick="validateCurrentConfig()">检查当前配置</button>
+                <button class="ghost-mini" onclick="exportDiagnostics()">导出诊断信息</button>
+                <button class="ghost-mini" onclick="clearSingboxLog()">清理 sing-box 日志</button>
+                <button class="ghost-mini" onclick="clearRuntimeMarker()">清理 runtime marker</button>
+                <button class="ghost-mini danger" onclick="resetNetworkState()">清理系统代理残留</button>
+              </div>
+            </div>
+            <div class="settings-note">
+              “清理系统代理残留”会关闭系统代理并回退 `proxyEnabled/tunEnabled/resumeAfterElevation` 到安全状态，适合异常退出后手动回收。
+            </div>
+          </div>
+        </section>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-bg" id="modal-layer">
+    <div class="modal">
+      <div class="modal-title">解析导入新订阅</div>
+      <div class="modal-sub">支持订阅 URL，也支持直接粘贴 vmess / vless / trojan / ss 节点文本</div>
+      <textarea placeholder="https://domain.com/link...&#10;或直接粘贴多行节点内容" id="sub-input"></textarea>
+      <div class="modal-fmts">
+        <span class="fmt-tag">Clash Config</span>
+        <span class="fmt-tag">sing-box JSON</span>
+        <span class="fmt-tag">Xray Base64</span>
+      </div>
+      <div class="modal-actions">
+        <button class="btn-ghost" onclick="hideModal()">取消</button>
+        <button class="btn-prim" onclick="fakeImport()">开始导入</button>
+      </div>
+    </div>
+  </div>
+  <div class="toast" id="toast"></div>
+</div>
+
+<script src="./scripts/state.js"></script>
+<script src="./scripts/common.js"></script>
+<script src="./scripts/tauri-api.js"></script>
+<script src="./scripts/settings.js"></script>
+<script src="./scripts/subscriptions.js"></script>
+<script src="./scripts/nodes.js"></script>
+<script src="./scripts/core.js"></script>
+<script src="./scripts/dashboard.js"></script>
+<script src="./scripts/app.js"></script>
+
+</body>
+</html>

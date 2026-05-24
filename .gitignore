@@ -1,0 +1,33 @@
+# Node / frontend
+node_modules/
+dist/
+frontend/dist/
+
+# Rust / Tauri
+src-tauri/target/
+
+# Local tooling / generated runtime state
+.playwright-mcp/
+*.log
+*.tmp
+.tmp-sing-box-*/
+
+# Reference projects with nested git repositories
+example/
+
+# Sensitive / local-only root files
+
+
+/tmp-sub-1.txt
+/tmp-sub-2.txt
+/测试节点.md
+/developer-handoff.md
+/proxy-client-dev-doc.md
+/reference-extraction-notes.md
+/index.html
+/wepbox.html
+/package.json
+/cache.db
+/config.json
+/README.local.md
+
