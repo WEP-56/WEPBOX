@@ -1,3 +1,5 @@
+#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+
 mod clash_api;
 mod config;
 mod models;
@@ -710,7 +712,7 @@ fn setup_tray(app: &tauri::App) -> anyhow::Result<()> {
 
     let mut builder = TrayIconBuilder::with_id("main")
         .menu(&menu)
-        .tooltip("代理客户端")
+        .tooltip("WEPBOX")
         .show_menu_on_left_click(false);
 
     if let Some(icon) = app.default_window_icon().cloned() {
@@ -996,7 +998,6 @@ fn main() {
             quit_requested: AtomicBool::new(false),
         }))
         .setup(|app| {
-            system::ensure_admin_on_startup(app.handle())?;
             singbox::cleanup_existing_sidecar(app.handle())?;
             system::apply_pending_elevation_settings(app.handle())?;
             let _ = recover_from_unclean_shutdown(app.handle());

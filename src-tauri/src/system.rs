@@ -58,23 +58,6 @@ pub fn apply_pending_elevation_settings(_app: &AppHandle) -> anyhow::Result<()> 
     Ok(())
 }
 
-#[cfg(target_os = "windows")]
-pub fn ensure_admin_on_startup(app: &AppHandle) -> anyhow::Result<()> {
-    if check_admin() {
-        return Ok(());
-    }
-
-    let current_exe = std::env::current_exe()?;
-    shell_execute_runas(&current_exe)?;
-    app.exit(0);
-    Ok(())
-}
-
-#[cfg(not(target_os = "windows"))]
-pub fn ensure_admin_on_startup(_app: &AppHandle) -> anyhow::Result<()> {
-    Ok(())
-}
-
 pub fn disable_system_proxy_for_tun() -> anyhow::Result<()> {
     #[cfg(target_os = "windows")]
     {

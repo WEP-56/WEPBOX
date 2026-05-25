@@ -1,5 +1,5 @@
 [package]
-name = "simple-singbox-client"
+name = "wepbox"
 version = "0.1.0"
 description = "A minimal sing-box desktop client backend"
 authors = ["wepbox"]
