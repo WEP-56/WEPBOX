@@ -61,6 +61,30 @@ function getProxyDelayValue(proxy){
   return Number.isFinite(proxy?.delay) ? proxy.delay : NaN;
 }
 
+function applySpeedTestResults(results){
+  if(!Array.isArray(results)) return;
+
+  for(const result of results){
+    if(!result?.name) continue;
+    if(Number.isFinite(result.delay)){
+      nodeDelayOverrides.set(result.name, result.delay);
+    } else {
+      nodeDelayOverrides.delete(result.name);
+    }
+  }
+}
+
+async function loadSpeedTestCache(){
+  if(!invoke) return;
+
+  try{
+    const results = await invoke('speed_test_cache');
+    applySpeedTestResults(results);
+  }catch(err){
+    appendLog('[WARN] failed to load speed test cache: ' + formatError(err));
+  }
+}
+
 function displayDelay(proxy){
   const delay = getProxyDelayValue(proxy);
   return Number.isFinite(delay) ? `${delay} ms` : '--';
@@ -406,6 +430,7 @@ async function refreshProxies(){
   }
 
   try{
+    await loadSpeedTestCache();
     const result = await invoke('list_proxies');
     proxySnapshot = result.raw?.proxies || {};
     proxyGroupsState = buildProxyGroups(proxySnapshot);

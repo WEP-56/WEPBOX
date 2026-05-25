@@ -1,4 +1,9 @@
-use std::{fs, path::PathBuf};
+use std::{
+    fs::{self, OpenOptions},
+    io::Write,
+    path::PathBuf,
+    time::{SystemTime, UNIX_EPOCH},
+};
 
 use anyhow::{Context, Result};
 use serde_json::{json, Value};
@@ -11,6 +16,8 @@ const SETTINGS_FILE: &str = "app_settings.json";
 const SINGBOX_CONFIG_FILE: &str = "config.json";
 const CORE_RUNTIME_MARKER_FILE: &str = "core_runtime.marker";
 const SINGBOX_LOG_FILE: &str = "sing-box.log";
+const APP_EVENT_LOG_FILE: &str = "app-events.log";
+const SPEED_TEST_CACHE_FILE: &str = "speed-test-cache.json";
 
 const TAG_PROXY: &str = "PROXY";
 const TAG_DIRECT: &str = "DIRECT";
@@ -22,6 +29,8 @@ const DNS_FAKEIP: &str = "dns_fakeip";
 
 const DEFAULT_TUN_IPV4: &str = "172.19.0.1/30";
 const DEFAULT_TUN_IPV6: &str = "fdfe:dcba:9876::1/126";
+const UDP_CONNECT_TIMEOUT: &str = "30s";
+const QUIC_INITIAL_PACKET_SIZE: u64 = 1252;
 
 const RS_GEOSITE_CN: &str = "geosite-cn";
 const RS_GEOSITE_GEOLOCATION_NOT_CN: &str = "geosite-geolocation-!cn";
@@ -61,6 +70,29 @@ pub fn singbox_config_path(app: &AppHandle) -> Result<PathBuf> {
 
 pub fn singbox_log_path(app: &AppHandle) -> Result<PathBuf> {
     Ok(app_data_dir(app)?.join("logs").join(SINGBOX_LOG_FILE))
+}
+
+pub fn app_event_log_path(app: &AppHandle) -> Result<PathBuf> {
+    Ok(app_data_dir(app)?.join("logs").join(APP_EVENT_LOG_FILE))
+}
+
+pub fn speed_test_cache_path(app: &AppHandle) -> Result<PathBuf> {
+    Ok(app_data_dir(app)?.join(SPEED_TEST_CACHE_FILE))
+}
+
+pub fn append_app_event_log(app: &AppHandle, message: impl AsRef<str>) -> Result<()> {
+    let path = app_event_log_path(app)?;
+    let timestamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_secs())
+        .unwrap_or_default();
+    let mut file = OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&path)
+        .with_context(|| format!("failed to open app event log {}", path.display()))?;
+    writeln!(file, "[{timestamp}] {}", message.as_ref())
+        .with_context(|| format!("failed to write app event log {}", path.display()))
 }
 
 pub fn core_runtime_marker_path(app: &AppHandle) -> Result<PathBuf> {
@@ -174,7 +206,8 @@ fn build_singbox_config(app: &AppHandle, settings: &AppSettings) -> Result<Value
         "tag": "mixed-in",
         "listen": mixed_listen,
         "listen_port": settings.local_mixed_port,
-        "set_system_proxy": !settings.tun_enabled
+        "set_system_proxy": !settings.tun_enabled,
+        "udp_fragment": settings.udp_acceleration_enabled
     })];
     if settings.tun_enabled {
         inbounds.push(build_tun_inbound(settings));
@@ -255,6 +288,7 @@ fn build_dns_servers(settings: &AppSettings, strategy: &str) -> Result<Vec<Value
             strategy,
             Some(TAG_DIRECT),
             Some(DNS_RESOLVER),
+            settings.experimental_quic,
         )?,
         build_dns_server(
             DNS_REMOTE,
@@ -262,6 +296,7 @@ fn build_dns_servers(settings: &AppSettings, strategy: &str) -> Result<Vec<Value
             strategy,
             Some(TAG_PROXY),
             Some(DNS_RESOLVER),
+            settings.experimental_quic,
         )?,
     ];
 
@@ -321,6 +356,14 @@ fn build_dns_rules(settings: &AppSettings) -> Vec<Value> {
 
 fn build_route_rules(settings: &AppSettings) -> Vec<Value> {
     let mut rules = vec![json!({ "action": "sniff" })];
+
+    if settings.udp_acceleration_enabled {
+        rules.push(json!({
+            "action": "route-options",
+            "udp_connect": true,
+            "udp_timeout": UDP_CONNECT_TIMEOUT
+        }));
+    }
 
     if settings.tun_enabled && settings.dns_guard_enabled {
         rules.push(json!({ "protocol": "dns", "action": "hijack-dns" }));
@@ -401,6 +444,7 @@ fn build_tun_inbound(settings: &AppSettings) -> Value {
         "strict_route": settings.tun_strict_route,
         "stack": "mixed",
         "mtu": settings.tun_mtu,
+        "udp_fragment": settings.udp_acceleration_enabled,
         "route_exclude_address": settings.tun_route_exclude_address
     })
 }
@@ -411,6 +455,7 @@ fn build_dns_server(
     strategy: &str,
     detour: Option<&str>,
     resolver_tag: Option<&str>,
+    experimental_quic: bool,
 ) -> Result<Value> {
     let raw = raw_address.trim();
     if raw.is_empty() {
@@ -471,6 +516,11 @@ fn build_dns_server(
         detour.filter(|value| !value.trim().is_empty() && !value.eq_ignore_ascii_case(TAG_DIRECT))
     {
         server["detour"] = detour.into();
+    }
+
+    if experimental_quic && matches!(server["type"].as_str(), Some("h3") | Some("quic")) {
+        server["initial_packet_size"] = QUIC_INITIAL_PACKET_SIZE.into();
+        server["disable_path_mtu_discovery"] = true.into();
     }
 
     Ok(server)
@@ -560,7 +610,7 @@ fn load_imported_outbounds(
             clean_items.push(item.clone());
             if !tags.iter().any(|existing| existing == tag) {
                 tags.push(tag.to_owned());
-                outbounds.push(normalize_imported_outbound(item));
+                outbounds.push(normalize_imported_outbound(item, settings));
             }
         }
 
@@ -578,9 +628,13 @@ fn load_imported_outbounds(
     Ok((outbounds, tags))
 }
 
-fn normalize_imported_outbound(mut outbound: Value) -> Value {
+fn normalize_imported_outbound(mut outbound: Value, settings: &AppSettings) -> Value {
     if let Some(flow) = outbound.get("flow").and_then(Value::as_str) {
         outbound["flow"] = normalize_flow_value(flow).into();
+    }
+
+    if settings.experimental_quic {
+        apply_quic_tuning(&mut outbound);
     }
 
     let uses_reality = outbound
@@ -606,6 +660,33 @@ fn normalize_imported_outbound(mut outbound: Value) -> Value {
         "fingerprint": fingerprint
     });
     outbound
+}
+
+fn apply_quic_tuning(outbound: &mut Value) {
+    let outbound_type = outbound
+        .get("type")
+        .and_then(Value::as_str)
+        .unwrap_or_default();
+    let uses_quic = match outbound_type {
+        "tuic" | "hysteria" | "hysteria2" => true,
+        "naive" => outbound
+            .get("quic")
+            .and_then(Value::as_bool)
+            .unwrap_or(false),
+        "http" => outbound
+            .get("version")
+            .and_then(Value::as_i64)
+            .map(|value| value == 3)
+            .unwrap_or(false),
+        _ => false,
+    };
+
+    if !uses_quic {
+        return;
+    }
+
+    outbound["initial_packet_size"] = QUIC_INITIAL_PACKET_SIZE.into();
+    outbound["disable_path_mtu_discovery"] = true.into();
 }
 
 fn normalize_flow_value(flow: &str) -> String {
@@ -703,7 +784,9 @@ fn is_informational_tag_clean(tag: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::{
-        build_dns_rules, build_dns_server, build_tun_inbound, DNS_FAKEIP, DNS_RESOLVER, TAG_DIRECT,
+        build_dns_rules, build_dns_server, build_route_rules, build_tun_inbound,
+        normalize_imported_outbound, DNS_FAKEIP, DNS_RESOLVER, QUIC_INITIAL_PACKET_SIZE,
+        TAG_DIRECT, UDP_CONNECT_TIMEOUT,
     };
     use crate::models::{AppSettings, ProxyMode};
 
@@ -727,6 +810,7 @@ mod tests {
             "ipv4_only",
             Some("PROXY"),
             Some(DNS_RESOLVER),
+            false,
         )
         .expect("dns server should build");
 
@@ -743,6 +827,7 @@ mod tests {
             "ipv4_only",
             Some(TAG_DIRECT),
             Some(DNS_RESOLVER),
+            false,
         )
         .expect("dns server should build");
 
@@ -775,6 +860,62 @@ mod tests {
         });
 
         assert_eq!(mixed["set_system_proxy"], true);
+    }
+
+    #[test]
+    fn udp_acceleration_adds_route_options_and_udp_fragment() {
+        let settings = AppSettings {
+            tun_enabled: true,
+            udp_acceleration_enabled: true,
+            ..AppSettings::default()
+        };
+        let tun = build_tun_inbound(&settings);
+        assert_eq!(tun["udp_fragment"], true);
+
+        let rules = build_route_rules(&settings);
+        let route_options = rules
+            .iter()
+            .find(|rule| {
+                rule.get("action").and_then(serde_json::Value::as_str) == Some("route-options")
+            })
+            .expect("route-options rule");
+        assert_eq!(route_options["udp_connect"], true);
+        assert_eq!(route_options["udp_timeout"], UDP_CONNECT_TIMEOUT);
+    }
+
+    #[test]
+    fn experimental_quic_adds_quic_fields_to_dns_servers() {
+        let server = build_dns_server(
+            "dns_remote",
+            "quic://1.1.1.1",
+            "ipv4_only",
+            Some(TAG_DIRECT),
+            Some(DNS_RESOLVER),
+            true,
+        )
+        .expect("dns server should build");
+
+        assert_eq!(server["type"], "quic");
+        assert_eq!(server["initial_packet_size"], QUIC_INITIAL_PACKET_SIZE);
+        assert_eq!(server["disable_path_mtu_discovery"], true);
+    }
+
+    #[test]
+    fn experimental_quic_tunes_quic_outbounds() {
+        let settings = AppSettings {
+            experimental_quic: true,
+            ..AppSettings::default()
+        };
+        let outbound = serde_json::json!({
+            "type": "tuic",
+            "server": "example.com",
+            "server_port": 443,
+            "uuid": "00000000-0000-0000-0000-000000000000"
+        });
+        let tuned = normalize_imported_outbound(outbound, &settings);
+
+        assert_eq!(tuned["initial_packet_size"], QUIC_INITIAL_PACKET_SIZE);
+        assert_eq!(tuned["disable_path_mtu_discovery"], true);
     }
 
     #[test]

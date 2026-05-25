@@ -8,14 +8,20 @@ const CORE_RESTART_KEYS = new Set([
 ]);
 
 const PENDING_SETTING_KEYS = new Set([
-  'followSystemTheme',
-  'autoUpdateHours',
-  'autoSelectFastest',
-  'autoSwitchOnFailure',
-  'speedTestInterval',
-  'udpAccelerationEnabled',
-  'experimentalQuic'
 ]);
+
+const systemThemeQuery = window.matchMedia?.('(prefers-color-scheme: light)');
+
+function applyThemePreference(current = settings){
+  const useLightTheme = Boolean(current?.followSystemTheme && systemThemeQuery?.matches);
+  document.documentElement.classList.toggle('light-theme', useLightTheme);
+}
+
+if(systemThemeQuery?.addEventListener){
+  systemThemeQuery.addEventListener('change', () => applyThemePreference(settings));
+} else if(systemThemeQuery?.addListener){
+  systemThemeQuery.addListener(() => applyThemePreference(settings));
+}
 
 function scrollToSettingsSection(sectionId){
   document.getElementById(`settings-section-${sectionId}`)?.scrollIntoView({
@@ -162,6 +168,8 @@ async function refreshMaintenanceInfo(){
 function renderSettingsPanel(current){
   if(!current) return;
 
+  applyThemePreference(current);
+
   setToggleState('auto-launch-tog', current.autoLaunch);
   setToggleState('auto-start-proxy-tog', current.autoStartProxy);
   setToggleState('start-hidden-tog', current.startHidden);
@@ -258,8 +266,81 @@ async function openLogDir(){
   await runMaintenanceAction('open_log_dir');
 }
 
+async function openSettingsFile(){
+  await runMaintenanceAction('open_settings_file');
+}
+
+async function openConfigFile(){
+  await runMaintenanceAction('open_config_file');
+}
+
+async function openSubscriptionsDir(){
+  await runMaintenanceAction('open_subscriptions_dir');
+}
+
 async function clearSingboxLog(){
   await runMaintenanceAction('clear_singbox_log', 'sing-box 日志已清理。');
+}
+
+async function refreshAllRemoteSubscriptions(){
+  if(!invoke){
+    showToast('当前不在 Tauri 环境中，无法刷新订阅。');
+    return;
+  }
+  try{
+    const result = await invoke('refresh_all_remote_subscriptions');
+    settings = normalizeSettings(await invoke('get_settings'));
+    status = await invoke('app_status');
+    renderStatus(status);
+    renderSubscriptions(settings.subscriptions || []);
+    renderSelectedSubscriptionSummary();
+    renderSettingsPanel(settings);
+    if(status.coreRunning) await refreshProxies();
+    showToast(`远程订阅刷新完成：更新 ${result.refreshed} 个，失败 ${result.failed} 个。`);
+    appendLog(`[INFO] remote subscriptions refreshed: checked=${result.checked}, refreshed=${result.refreshed}, failed=${result.failed}, skipped=${result.skipped}, restarted=${result.restarted}`);
+    if(Array.isArray(result.failures)){
+      result.failures.forEach(item => appendLog(`[WARN] ${item}`));
+    }
+  }catch(err){
+    const message = formatError(err);
+    showToast(message);
+    appendLog('[ERROR] ' + message);
+  }
+}
+
+async function clearSubscriptionCache(){
+  if(!window.confirm('清理订阅缓存会删除已导入订阅和本地缓存，并重写当前配置。继续？')) return;
+  await runMaintenanceAction('clear_subscription_cache');
+  if(invoke){
+    settings = normalizeSettings(await invoke('get_settings'));
+    status = await invoke('app_status');
+    renderStatus(status);
+    renderSubscriptions(settings.subscriptions || []);
+    renderSelectedSubscriptionSummary();
+    renderSettingsPanel(settings);
+    if(status.coreRunning) await refreshProxies();
+  }
+}
+
+async function runScheduledSpeedTest(){
+  if(!invoke){
+    showToast('当前不在 Tauri 环境中，无法执行测速计划。');
+    return;
+  }
+  try{
+    const result = await invoke('run_scheduled_speed_test');
+    applySpeedTestResults(result.results || []);
+    if(status?.coreRunning) await refreshProxies();
+    showToast(`测速完成：成功 ${result.succeeded} 个，失败 ${result.failed} 个，自动切换 ${result.selected?.length || 0} 个分组。`);
+    appendLog(`[INFO] speed test completed: tested=${result.tested}, succeeded=${result.succeeded}, failed=${result.failed}, selected=${result.selected?.length || 0}`);
+    if(Array.isArray(result.selected)){
+      result.selected.forEach(item => appendLog(`[INFO] selected fastest node: ${item.group} -> ${item.name} (${item.delay}ms)`));
+    }
+  }catch(err){
+    const message = formatError(err);
+    showToast(message);
+    appendLog('[ERROR] ' + message);
+  }
 }
 
 async function clearRuntimeMarker(){

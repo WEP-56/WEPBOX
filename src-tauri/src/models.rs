@@ -189,6 +189,45 @@ pub struct ImportSubscriptionResult {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct SubscriptionRefreshSummary {
+    pub checked: usize,
+    pub refreshed: usize,
+    pub failed: usize,
+    pub skipped: usize,
+    pub node_count: usize,
+    pub restarted: bool,
+    pub failures: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SpeedTestResult {
+    pub name: String,
+    pub delay: Option<u64>,
+    pub tested_at: u64,
+    pub error: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AutoSelectedProxy {
+    pub group: String,
+    pub name: String,
+    pub delay: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SpeedTestSummary {
+    pub tested: usize,
+    pub succeeded: usize,
+    pub failed: usize,
+    pub selected: Vec<AutoSelectedProxy>,
+    pub results: Vec<SpeedTestResult>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct MaintenanceInfo {
     pub app_data_dir: String,
     pub settings_path: String,

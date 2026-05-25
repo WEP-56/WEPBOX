@@ -378,12 +378,12 @@
                 <i class="ti ti-device-desktop ri"></i>
                 <div>
                   <div class="rn">跟随系统主题</div>
-                  <div class="rs">当前仅保存偏好，主题切换链路尚未接到完整桌面外观系统。</div>
+                  <div class="rs">根据系统浅色 / 深色偏好切换当前界面主题。</div>
                 </div>
               </div>
               <div class="setting-actions">
-                <span class="setting-badge pending">待接入</span>
-                <button class="tog" id="follow-system-theme-tog" onclick="toggleSetting('followSystemTheme', { pendingOnly: true })"></button>
+                <span class="setting-badge live">已接入</span>
+                <button class="tog" id="follow-system-theme-tog" onclick="toggleSetting('followSystemTheme')"></button>
               </div>
             </div>
           </div>
@@ -643,12 +643,12 @@
                 <i class="ti ti-brand-socket-io ri"></i>
                 <div>
                   <div class="rn">UDP 加速</div>
-                  <div class="rs">当前仅保存偏好，尚未进入 sing-box 生成链。</div>
+                  <div class="rs">会把 UDP 连接优化写入 sing-box 路由与入站参数。</div>
                 </div>
               </div>
               <div class="setting-actions">
-                <span class="setting-badge pending">待接入</span>
-                <button class="tog" id="udp-acceleration-tog" onclick="toggleSetting('udpAccelerationEnabled', { pendingOnly: true })"></button>
+                <span class="setting-badge live">已接入</span>
+                <button class="tog" id="udp-acceleration-tog" onclick="toggleSetting('udpAccelerationEnabled')"></button>
               </div>
             </div>
             <div class="row">
@@ -656,12 +656,12 @@
                 <i class="ti ti-rocket ri"></i>
                 <div>
                   <div class="rn">实验性 QUIC 优化</div>
-                  <div class="rs">当前仅保存偏好，未来如果扩 sing-box 传输细项时再接入。</div>
+                  <div class="rs">会对支持 QUIC 的 DNS 与出站参数写入更激进的传输字段。</div>
                 </div>
               </div>
               <div class="setting-actions">
-                <span class="setting-badge pending">待接入</span>
-                <button class="tog" id="experimental-quic-tog" onclick="toggleSetting('experimentalQuic', { pendingOnly: true })"></button>
+                <span class="setting-badge live">已接入</span>
+                <button class="tog" id="experimental-quic-tog" onclick="toggleSetting('experimentalQuic')"></button>
               </div>
             </div>
           </div>
@@ -689,12 +689,12 @@
                 <i class="ti ti-refresh ri"></i>
                 <div>
                   <div class="rn">订阅自动更新间隔</div>
-                  <div class="rs">当前仅保存偏好，后台定时刷新任务尚未接入。</div>
+                  <div class="rs">启动后后台定时检查远程订阅；到达间隔后自动刷新，失败会写入诊断事件日志。</div>
                 </div>
               </div>
               <div class="setting-actions">
-                <span class="setting-badge pending">待接入</span>
-                <select class="setting-select" id="auto-update-hours" onchange="updateNumericSetting('autoUpdateHours', this.value, { pendingOnly: true })">
+                <span class="setting-badge live">已接入</span>
+                <select class="setting-select" id="auto-update-hours" onchange="updateNumericSetting('autoUpdateHours', this.value)">
                   <option value="0">关闭</option>
                   <option value="6">每 6 小时</option>
                   <option value="12">每 12 小时</option>
@@ -707,12 +707,12 @@
                 <i class="ti ti-activity-heartbeat ri"></i>
                 <div>
                   <div class="rn">测速计划</div>
-                  <div class="rs">当前仅保存偏好，后台自动测速与任务调度尚未接入。</div>
+                  <div class="rs">内核运行时按计划在后台测速，结果会缓存并用于节点排序与自动优选。</div>
                 </div>
               </div>
               <div class="setting-actions">
-                <span class="setting-badge pending">待接入</span>
-                <select class="setting-select" id="speed-test-interval" onchange="updateSelectSetting('speedTestInterval', this.value, { pendingOnly: true })">
+                <span class="setting-badge live">已接入</span>
+                <select class="setting-select" id="speed-test-interval" onchange="updateSelectSetting('speedTestInterval', this.value)">
                   <option value="never">从不</option>
                   <option value="every30Minutes">每 30 分钟</option>
                   <option value="every1Hour">每 1 小时</option>
@@ -725,12 +725,12 @@
                 <i class="ti ti-bolt-filled ri"></i>
                 <div>
                   <div class="rn">自动选择最快节点</div>
-                  <div class="rs">当前仅保存偏好，尚未接入后台自动优选策略。</div>
+                  <div class="rs">测速计划完成后，会按分组切换到当前最低延迟的可用节点。</div>
                 </div>
               </div>
               <div class="setting-actions">
-                <span class="setting-badge pending">待接入</span>
-                <button class="tog" id="auto-select-fastest-tog" onclick="toggleSetting('autoSelectFastest', { pendingOnly: true })"></button>
+                <span class="setting-badge live">已接入</span>
+                <button class="tog" id="auto-select-fastest-tog" onclick="toggleSetting('autoSelectFastest')"></button>
               </div>
             </div>
             <div class="row">
@@ -738,12 +738,12 @@
                 <i class="ti ti-route-alt-left ri"></i>
                 <div>
                   <div class="rn">故障时自动切换</div>
-                  <div class="rs">当前仅保存偏好，尚未接入链路失败自动切换策略。</div>
+                  <div class="rs">测速发现当前主代理组失败时，会自动切到当前可用的最佳节点。</div>
                 </div>
               </div>
               <div class="setting-actions">
-                <span class="setting-badge pending">待接入</span>
-                <button class="tog" id="auto-switch-on-failure-tog" onclick="toggleSetting('autoSwitchOnFailure', { pendingOnly: true })"></button>
+                <span class="setting-badge live">已接入</span>
+                <button class="tog" id="auto-switch-on-failure-tog" onclick="toggleSetting('autoSwitchOnFailure')"></button>
               </div>
             </div>
             <div class="settings-note">
@@ -797,9 +797,15 @@
               <div class="settings-action-grid">
                 <button class="ghost-mini" onclick="openAppDataDir()">打开应用数据目录</button>
                 <button class="ghost-mini" onclick="openLogDir()">打开日志目录</button>
+                <button class="ghost-mini" onclick="openSettingsFile()">打开设置文件</button>
+                <button class="ghost-mini" onclick="openConfigFile()">打开当前配置</button>
+                <button class="ghost-mini" onclick="openSubscriptionsDir()">打开订阅目录</button>
+                <button class="ghost-mini" onclick="refreshAllRemoteSubscriptions()">刷新全部远程订阅</button>
+                <button class="ghost-mini" onclick="runScheduledSpeedTest()">执行测速计划</button>
                 <button class="ghost-mini" onclick="validateCurrentConfig()">检查当前配置</button>
                 <button class="ghost-mini" onclick="exportDiagnostics()">导出诊断信息</button>
                 <button class="ghost-mini" onclick="clearSingboxLog()">清理 sing-box 日志</button>
+                <button class="ghost-mini danger" onclick="clearSubscriptionCache()">清理订阅缓存</button>
                 <button class="ghost-mini" onclick="clearRuntimeMarker()">清理 runtime marker</button>
                 <button class="ghost-mini danger" onclick="resetNetworkState()">清理系统代理残留</button>
               </div>

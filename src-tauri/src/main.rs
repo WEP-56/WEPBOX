@@ -1,6 +1,7 @@
 mod clash_api;
 mod config;
 mod models;
+mod node_automation;
 mod singbox;
 mod subscriptions;
 mod system;
@@ -9,11 +10,15 @@ use std::sync::{
     atomic::{AtomicBool, Ordering},
     Arc,
 };
-use std::{fs, time::{SystemTime, UNIX_EPOCH}};
+use std::{
+    fs,
+    time::{Duration, SystemTime, UNIX_EPOCH},
+};
 
 use models::{
     AppSettings, AppStatus, ImportSubscriptionRequest, ImportSubscriptionResult,
-    MaintenanceActionResult, MaintenanceInfo, ProxyList, SelectProxyRequest,
+    MaintenanceActionResult, MaintenanceInfo, ProxyList, SelectProxyRequest, SpeedTestResult,
+    SpeedTestSummary, SubscriptionRefreshSummary,
 };
 use singbox::SingboxManager;
 use system::{
@@ -102,6 +107,36 @@ async fn open_log_dir(app: AppHandle) -> Result<MaintenanceActionResult, String>
 }
 
 #[tauri::command]
+async fn open_settings_file(app: AppHandle) -> Result<MaintenanceActionResult, String> {
+    let path = config::settings_path(&app).map_err(to_err)?;
+    open_path_in_file_manager(&path).map_err(to_err)?;
+    Ok(MaintenanceActionResult {
+        message: "已打开设置文件".to_string(),
+        path: Some(path.display().to_string()),
+    })
+}
+
+#[tauri::command]
+async fn open_config_file(app: AppHandle) -> Result<MaintenanceActionResult, String> {
+    let path = config::singbox_config_path(&app).map_err(to_err)?;
+    open_path_in_file_manager(&path).map_err(to_err)?;
+    Ok(MaintenanceActionResult {
+        message: "已打开当前 sing-box 配置".to_string(),
+        path: Some(path.display().to_string()),
+    })
+}
+
+#[tauri::command]
+async fn open_subscriptions_dir(app: AppHandle) -> Result<MaintenanceActionResult, String> {
+    let path = config::subscriptions_dir(&app).map_err(to_err)?;
+    open_path_in_file_manager(&path).map_err(to_err)?;
+    Ok(MaintenanceActionResult {
+        message: "已打开订阅缓存目录".to_string(),
+        path: Some(path.display().to_string()),
+    })
+}
+
+#[tauri::command]
 async fn clear_singbox_log(app: AppHandle) -> Result<MaintenanceActionResult, String> {
     let path = config::singbox_log_path(&app).map_err(to_err)?;
     if path.exists() {
@@ -123,6 +158,70 @@ async fn clear_runtime_marker(app: AppHandle) -> Result<MaintenanceActionResult,
         message: "已清理 runtime marker".to_string(),
         path: Some(path.display().to_string()),
     })
+}
+
+#[tauri::command]
+async fn refresh_all_remote_subscriptions(
+    app: AppHandle,
+    state: State<'_, SharedState>,
+) -> Result<SubscriptionRefreshSummary, String> {
+    refresh_remote_subscriptions_with_core(app, state.inner().clone(), None).await
+}
+
+#[tauri::command]
+async fn clear_subscription_cache(
+    app: AppHandle,
+    state: State<'_, SharedState>,
+) -> Result<MaintenanceActionResult, String> {
+    let was_running = {
+        let core = state.core.lock().await;
+        core.is_running()
+    };
+
+    let removed = subscriptions::clear_subscription_cache(&app).map_err(to_err)?;
+    if was_running {
+        restart_core_inner(app.clone(), state.inner().clone()).await?;
+    }
+
+    Ok(MaintenanceActionResult {
+        message: format!("已清理订阅缓存：{removed} 个订阅"),
+        path: Some(
+            config::subscriptions_dir(&app)
+                .map_err(to_err)?
+                .display()
+                .to_string(),
+        ),
+    })
+}
+
+#[tauri::command]
+async fn run_scheduled_speed_test(
+    app: AppHandle,
+    state: State<'_, SharedState>,
+) -> Result<SpeedTestSummary, String> {
+    let is_running = {
+        let core = state.core.lock().await;
+        core.is_running()
+    };
+    if !is_running {
+        return Err("内核未启动，无法执行测速计划".to_string());
+    }
+
+    let settings = config::load_or_create_settings(&app).map_err(to_err)?;
+    let summary = node_automation::run_speed_test(
+        &app,
+        settings.auto_select_fastest,
+        settings.auto_switch_on_failure,
+    )
+    .await
+    .map_err(to_err)?;
+    log_speed_test_summary(&app, &summary);
+    Ok(summary)
+}
+
+#[tauri::command]
+async fn speed_test_cache(app: AppHandle) -> Result<Vec<SpeedTestResult>, String> {
+    node_automation::load_speed_test_cache(&app).map_err(to_err)
 }
 
 #[tauri::command]
@@ -166,6 +265,7 @@ async fn export_diagnostics(app: AppHandle) -> Result<MaintenanceActionResult, S
     let config_path = config::singbox_config_path(&app).map_err(to_err)?;
     let settings_path = config::settings_path(&app).map_err(to_err)?;
     let log_path = config::singbox_log_path(&app).map_err(to_err)?;
+    let app_event_log_path = config::app_event_log_path(&app).map_err(to_err)?;
     let runtime_marker_path = config::core_runtime_marker_path(&app).map_err(to_err)?;
     let sidecar_path = singbox::primary_sidecar_path(&app)
         .ok()
@@ -173,23 +273,26 @@ async fn export_diagnostics(app: AppHandle) -> Result<MaintenanceActionResult, S
         .unwrap_or_else(|| "<unavailable>".to_string());
     let sidecar_version = singbox::query_sidecar_version(&app)
         .unwrap_or_else(|error| format!("unavailable: {error}"));
-    let config_snapshot = fs::read_to_string(&config_path).unwrap_or_else(|error| {
-        format!("failed to read current config: {error}")
-    });
+    let config_snapshot = fs::read_to_string(&config_path)
+        .unwrap_or_else(|error| format!("failed to read current config: {error}"));
     let settings_snapshot = serde_json::to_string_pretty(&settings)
         .unwrap_or_else(|error| format!("failed to serialize settings: {error}"));
+    let app_event_log_snapshot = fs::read_to_string(&app_event_log_path)
+        .unwrap_or_else(|error| format!("failed to read app event log: {error}"));
 
     let report = format!(
-        "Wepbox diagnostics\nGeneratedAtUnix: {timestamp}\n\nPaths\n- appDataDir: {}\n- settingsPath: {}\n- configPath: {}\n- logPath: {}\n- runtimeMarkerPath: {}\n- sidecarPath: {}\n\nSidecar\n- version: {}\n\nSettings\n{}\n\nConfig\n{}\n",
+        "Wepbox diagnostics\nGeneratedAtUnix: {timestamp}\n\nPaths\n- appDataDir: {}\n- settingsPath: {}\n- configPath: {}\n- logPath: {}\n- appEventLogPath: {}\n- runtimeMarkerPath: {}\n- sidecarPath: {}\n\nSidecar\n- version: {}\n\nSettings\n{}\n\nConfig\n{}\n\nApp Events\n{}\n",
         app_data_dir.display(),
         settings_path.display(),
         config_path.display(),
         log_path.display(),
+        app_event_log_path.display(),
         runtime_marker_path.display(),
         sidecar_path,
         sidecar_version,
         settings_snapshot,
-        config_snapshot
+        config_snapshot,
+        app_event_log_snapshot
     );
 
     fs::write(&report_path, report).map_err(|error| error.to_string())?;
@@ -198,6 +301,66 @@ async fn export_diagnostics(app: AppHandle) -> Result<MaintenanceActionResult, S
         message: "诊断信息已导出".to_string(),
         path: Some(report_path.display().to_string()),
     })
+}
+
+async fn refresh_remote_subscriptions_with_core(
+    app: AppHandle,
+    state: SharedState,
+    due_after_secs: Option<u64>,
+) -> Result<SubscriptionRefreshSummary, String> {
+    let was_running = {
+        let core = state.core.lock().await;
+        core.is_running()
+    };
+
+    let mut summary = subscriptions::refresh_remote_subscriptions(&app, due_after_secs)
+        .await
+        .map_err(to_err)?;
+
+    if summary.refreshed > 0 && was_running {
+        restart_core_inner(app.clone(), state).await?;
+        summary.restarted = true;
+    }
+
+    if summary.refreshed > 0 || summary.failed > 0 {
+        let _ = config::append_app_event_log(
+            &app,
+            format!(
+                "subscription refresh: checked={}, refreshed={}, failed={}, skipped={}, restarted={}",
+                summary.checked, summary.refreshed, summary.failed, summary.skipped, summary.restarted
+            ),
+        );
+        for failure in &summary.failures {
+            let _ = config::append_app_event_log(
+                &app,
+                format!("subscription refresh failed: {failure}"),
+            );
+        }
+    }
+
+    Ok(summary)
+}
+
+fn log_speed_test_summary(app: &AppHandle, summary: &SpeedTestSummary) {
+    let _ = config::append_app_event_log(
+        app,
+        format!(
+            "speed test: tested={}, succeeded={}, failed={}, selected={}",
+            summary.tested,
+            summary.succeeded,
+            summary.failed,
+            summary.selected.len()
+        ),
+    );
+    for selected in &summary.selected {
+        let _ = config::append_app_event_log(
+            app,
+            format!(
+                "speed test selected: group={}, node={}, delay={}ms",
+                selected.group, selected.name, selected.delay
+            ),
+        );
+    }
 }
 
 #[tauri::command]
@@ -610,6 +773,104 @@ fn spawn_auto_start_proxy(app: AppHandle) {
     });
 }
 
+fn spawn_subscription_auto_update(app: AppHandle) {
+    tauri::async_runtime::spawn(async move {
+        tokio::time::sleep(Duration::from_secs(60)).await;
+
+        loop {
+            let sleep_for = match config::load_or_create_settings(&app) {
+                Ok(settings) if settings.auto_update_hours > 0 => {
+                    let due_after_secs = u64::from(settings.auto_update_hours) * 60 * 60;
+                    let state = app.state::<SharedState>().inner().clone();
+                    if let Err(error) = refresh_remote_subscriptions_with_core(
+                        app.clone(),
+                        state,
+                        Some(due_after_secs),
+                    )
+                    .await
+                    {
+                        eprintln!("[subscription-auto-update] {error}");
+                        let _ = config::append_app_event_log(
+                            &app,
+                            format!("subscription auto update failed: {error}"),
+                        );
+                    }
+                    Duration::from_secs(30 * 60)
+                }
+                Ok(_) => Duration::from_secs(5 * 60),
+                Err(error) => {
+                    eprintln!("[subscription-auto-update] failed to load settings: {error}");
+                    Duration::from_secs(5 * 60)
+                }
+            };
+
+            tokio::time::sleep(sleep_for).await;
+        }
+    });
+}
+
+fn spawn_speed_test_scheduler(app: AppHandle) {
+    tauri::async_runtime::spawn(async move {
+        tokio::time::sleep(Duration::from_secs(90)).await;
+
+        loop {
+            let sleep_for = match config::load_or_create_settings(&app) {
+                Ok(settings) => {
+                    let Some(interval_secs) =
+                        node_automation::speed_test_interval_secs(settings.speed_test_interval)
+                    else {
+                        tokio::time::sleep(Duration::from_secs(5 * 60)).await;
+                        continue;
+                    };
+
+                    let is_running = {
+                        let state = app.state::<SharedState>().inner().clone();
+                        let core = state.core.lock().await;
+                        core.is_running()
+                    };
+
+                    if is_running {
+                        let latest = node_automation::latest_speed_test_at(&app)
+                            .ok()
+                            .flatten()
+                            .unwrap_or_default();
+                        let now = SystemTime::now()
+                            .duration_since(UNIX_EPOCH)
+                            .map(|duration| duration.as_secs())
+                            .unwrap_or_default();
+                        if now.saturating_sub(latest) >= interval_secs {
+                            match node_automation::run_speed_test(
+                                &app,
+                                settings.auto_select_fastest,
+                                settings.auto_switch_on_failure,
+                            )
+                            .await
+                            {
+                                Ok(summary) => log_speed_test_summary(&app, &summary),
+                                Err(error) => {
+                                    eprintln!("[speed-test-scheduler] {error}");
+                                    let _ = config::append_app_event_log(
+                                        &app,
+                                        format!("speed test failed: {error}"),
+                                    );
+                                }
+                            }
+                        }
+                    }
+
+                    Duration::from_secs(5 * 60)
+                }
+                Err(error) => {
+                    eprintln!("[speed-test-scheduler] failed to load settings: {error}");
+                    Duration::from_secs(5 * 60)
+                }
+            };
+
+            tokio::time::sleep(sleep_for).await;
+        }
+    });
+}
+
 fn spawn_start_hidden(app: AppHandle) {
     tauri::async_runtime::spawn(async move {
         tokio::time::sleep(std::time::Duration::from_millis(120)).await;
@@ -704,6 +965,8 @@ fn main() {
             if settings.auto_start_proxy || settings.proxy_enabled {
                 spawn_auto_start_proxy(app.handle().clone());
             }
+            spawn_subscription_auto_update(app.handle().clone());
+            spawn_speed_test_scheduler(app.handle().clone());
             Ok(())
         })
         .on_menu_event(|app, event| handle_tray_menu(app, event.id().as_ref()))
@@ -774,8 +1037,15 @@ fn main() {
             maintenance_info,
             open_app_data_dir,
             open_log_dir,
+            open_settings_file,
+            open_config_file,
+            open_subscriptions_dir,
             clear_singbox_log,
             clear_runtime_marker,
+            refresh_all_remote_subscriptions,
+            clear_subscription_cache,
+            run_scheduled_speed_test,
+            speed_test_cache,
             reset_network_state,
             validate_current_config,
             export_diagnostics,

@@ -12,7 +12,10 @@ use url::Url;
 
 use crate::{
     config,
-    models::{AppSettings, ImportSubscriptionRequest, SubscriptionInfo, SubscriptionStatus},
+    models::{
+        AppSettings, ImportSubscriptionRequest, SubscriptionInfo, SubscriptionRefreshSummary,
+        SubscriptionStatus,
+    },
 };
 
 pub async fn import_subscription(
@@ -118,6 +121,57 @@ pub async fn refresh_subscription(app: &AppHandle, id: &str) -> Result<Subscript
     .await
 }
 
+pub async fn refresh_remote_subscriptions(
+    app: &AppHandle,
+    due_after_secs: Option<u64>,
+) -> Result<SubscriptionRefreshSummary> {
+    let settings = config::load_or_create_settings(app)?;
+    let now = now_unix();
+    let remote_subscriptions: Vec<SubscriptionInfo> = settings
+        .subscriptions
+        .iter()
+        .filter(|subscription| subscription_is_remote_url(&subscription.url))
+        .cloned()
+        .collect();
+
+    let mut summary = SubscriptionRefreshSummary {
+        checked: remote_subscriptions.len(),
+        refreshed: 0,
+        failed: 0,
+        skipped: 0,
+        node_count: 0,
+        restarted: false,
+        failures: Vec::new(),
+    };
+
+    for subscription in remote_subscriptions {
+        if let Some(due_after_secs) = due_after_secs {
+            let age = now.saturating_sub(subscription.updated_at);
+            if age < due_after_secs {
+                summary.skipped += 1;
+                continue;
+            }
+        }
+
+        match refresh_subscription(app, &subscription.id).await {
+            Ok(updated) => {
+                summary.refreshed += 1;
+                summary.node_count += updated.node_count;
+            }
+            Err(error) => {
+                summary.failed += 1;
+                let message = error.to_string();
+                summary
+                    .failures
+                    .push(format!("{}: {}", subscription.name, message));
+                mark_subscription_failed(app, &subscription.id, &message)?;
+            }
+        }
+    }
+
+    Ok(summary)
+}
+
 pub fn delete_subscription(app: &AppHandle, id: &str) -> Result<()> {
     let mut settings = config::load_or_create_settings(app)?;
     let before = settings.subscriptions.len();
@@ -135,6 +189,31 @@ pub fn delete_subscription(app: &AppHandle, id: &str) -> Result<()> {
     Ok(())
 }
 
+pub fn clear_subscription_cache(app: &AppHandle) -> Result<usize> {
+    let mut settings = config::load_or_create_settings(app)?;
+    let removed = settings.subscriptions.len();
+    settings.subscriptions.clear();
+
+    let dir = config::subscriptions_dir(app)?;
+    if dir.exists() {
+        for entry in fs::read_dir(&dir)
+            .with_context(|| format!("failed to read subscriptions dir {}", dir.display()))?
+        {
+            let path = entry?.path();
+            if matches!(
+                path.extension().and_then(|value| value.to_str()),
+                Some("raw" | "json")
+            ) {
+                remove_if_exists(path)?;
+            }
+        }
+    }
+
+    config::save_settings(app, &settings)?;
+    config::write_singbox_config(app, &settings)?;
+    Ok(removed)
+}
+
 fn upsert_subscription(settings: &mut AppSettings, subscription: SubscriptionInfo) {
     if let Some(existing) = settings
         .subscriptions
@@ -145,6 +224,22 @@ fn upsert_subscription(settings: &mut AppSettings, subscription: SubscriptionInf
     } else {
         settings.subscriptions.push(subscription);
     }
+}
+
+fn mark_subscription_failed(app: &AppHandle, id: &str, message: &str) -> Result<()> {
+    let mut settings = config::load_or_create_settings(app)?;
+    let Some(subscription) = settings
+        .subscriptions
+        .iter_mut()
+        .find(|subscription| subscription.id == id)
+    else {
+        return Ok(());
+    };
+
+    subscription.status = SubscriptionStatus::Failed;
+    subscription.message = Some(message.to_owned());
+    subscription.updated_at = now_unix();
+    config::save_settings(app, &settings)
 }
 
 async fn fetch_text(url: &str) -> Result<String> {
