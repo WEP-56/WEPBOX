@@ -15,6 +15,10 @@ let nodeSourceFilter = 'all';
 let overallTesting = false;
 let logExpanded = false;
 let maintenanceInfo = null;
+let singboxReleases = [];
+let selectedSingboxRelease = '';
+let singboxReleaseLoading = false;
+let singboxInstallRunning = false;
 const expandedProxyGroups = new Set();
 const nodeDelayOverrides = new Map();
 const groupTestingState = new Set();
@@ -31,7 +35,8 @@ const DEFAULT_SETTINGS = Object.freeze({
   mode: 'rule',
   fallback: 'direct',
   autoUpdateHours: 24,
-  followSystemTheme: true,
+  followSystemTheme: false,
+  themeColor: 'cyan',
   notifyOnFailure: true,
   autoLaunch: true,
   autoStartProxy: true,

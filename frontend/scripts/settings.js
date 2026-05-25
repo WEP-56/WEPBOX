@@ -13,8 +13,10 @@ const PENDING_SETTING_KEYS = new Set([
 const systemThemeQuery = window.matchMedia?.('(prefers-color-scheme: light)');
 
 function applyThemePreference(current = settings){
-  const useLightTheme = Boolean(current?.followSystemTheme && systemThemeQuery?.matches);
-  document.documentElement.classList.toggle('light-theme', useLightTheme);
+  const theme = normalizeThemeColor(current?.themeColor);
+  document.documentElement.classList.toggle('light-theme', Boolean(current?.followSystemTheme));
+  document.body.classList.remove('theme-mint', 'theme-blue', 'theme-cyan', 'theme-purple', 'theme-orange');
+  document.body.classList.add(`theme-${theme}`);
 }
 
 if(systemThemeQuery?.addEventListener){
@@ -24,9 +26,19 @@ if(systemThemeQuery?.addEventListener){
 }
 
 function scrollToSettingsSection(sectionId){
-  document.getElementById(`settings-section-${sectionId}`)?.scrollIntoView({
-    behavior: 'smooth',
-    block: 'start'
+  const buttonIndex = {
+    general: 0,
+    proxy: 1,
+    advanced: 2,
+    subscription: 3,
+    maintenance: 4
+  }[sectionId];
+
+  document.querySelectorAll('.settings-section').forEach(section => {
+    section.classList.toggle('active', section.id === `settings-section-${sectionId}`);
+  });
+  document.querySelectorAll('.settings-nav-btn').forEach((button, index) => {
+    button.classList.toggle('active', index === buttonIndex);
   });
 }
 
@@ -59,10 +71,9 @@ async function toggleTun(){
 }
 
 async function setMode(el, mode){
-  document.querySelectorAll('[data-mode]').forEach(button => button.classList.remove('on'));
-  el.classList.add('on');
   settings = normalizeSettings(settings);
   settings.mode = mode;
+  renderMode(mode);
   renderSettingsPanel(settings);
   await saveCurrentSettings({ restartCore: true });
   appendLog(`[INFO] route mode saved: ${mode}`);
@@ -76,6 +87,17 @@ async function toggleSetting(key, options = {}){
     restartCore: options.restartCore ?? CORE_RESTART_KEYS.has(key),
     pendingOnly: options.pendingOnly ?? PENDING_SETTING_KEYS.has(key)
   });
+}
+
+function normalizeThemeColor(value){
+  return ['mint', 'blue', 'cyan', 'purple', 'orange'].includes(value) ? value : 'cyan';
+}
+
+async function updateThemeColor(themeColor){
+  settings = normalizeSettings(settings);
+  settings.themeColor = normalizeThemeColor(themeColor);
+  renderSettingsPanel(settings);
+  await saveCurrentSettings();
 }
 
 async function updateSelectSetting(key, value, options = {}){
@@ -187,6 +209,8 @@ function renderSettingsPanel(current){
   setToggleState('experimental-quic-tog', current.experimentalQuic);
   setToggleState('tun-auto-route-tog', current.tunAutoRoute);
   setToggleState('tun-strict-route-tog', current.tunStrictRoute);
+  document.getElementById('follow-system-theme-tog')?.removeAttribute('disabled');
+  renderThemePicker(current.themeColor);
 
   setValue('fallback-select', current.fallback || 'direct');
   setValue('auto-update-hours', String(current.autoUpdateHours ?? 24));
@@ -205,6 +229,13 @@ function renderSettingsPanel(current){
   renderMaintenanceInfo();
 }
 
+function renderThemePicker(themeColor){
+  const activeTheme = normalizeThemeColor(themeColor);
+  document.querySelectorAll('[data-theme-color]').forEach(button => {
+    button.classList.toggle('active', button.dataset.themeColor === activeTheme);
+  });
+}
+
 function renderMaintenanceInfo(){
   const version = document.getElementById('maintenance-sidecar-version');
   const appData = document.getElementById('maintenance-app-data-path');
@@ -221,6 +252,59 @@ function renderMaintenanceInfo(){
   if(logPath) logPath.textContent = maintenanceInfo?.logPath || '等待后端连接';
   if(runtimePath) runtimePath.textContent = maintenanceInfo?.runtimeMarkerPath || '等待后端连接';
   if(subscriptionPath) subscriptionPath.textContent = maintenanceInfo?.subscriptionsDir || '等待后端连接';
+  renderSingboxReleaseControls();
+}
+
+function renderSingboxReleaseControls(){
+  const select = document.getElementById('singbox-release-select');
+  const scanBtn = document.getElementById('singbox-scan-btn');
+  const installBtn = document.getElementById('singbox-install-btn');
+  const note = document.getElementById('singbox-release-note');
+
+  if(select){
+    if(singboxReleases.length){
+      select.innerHTML = singboxReleases.map(item => {
+        const size = item.assetSize ? ` · ${formatReleaseSize(item.assetSize)}` : '';
+        const published = item.publishedAt ? ` · ${item.publishedAt.slice(0, 10)}` : '';
+        return `<option value="${escapeHtml(item.version)}">v${escapeHtml(item.version)}${published}${size}</option>`;
+      }).join('');
+      select.value = selectedSingboxRelease || singboxReleases[0]?.version || '';
+    } else {
+      select.innerHTML = `<option value="">${singboxReleaseLoading ? '正在扫描...' : '先扫描版本'}</option>`;
+      select.value = '';
+    }
+    select.disabled = singboxReleaseLoading || singboxInstallRunning || !singboxReleases.length;
+  }
+
+  if(scanBtn){
+    scanBtn.textContent = singboxReleaseLoading ? '扫描中...' : '扫描版本';
+    scanBtn.disabled = singboxReleaseLoading || singboxInstallRunning;
+  }
+  if(installBtn){
+    installBtn.textContent = singboxInstallRunning ? '安装中...' : '安装所选版本';
+    installBtn.disabled = singboxReleaseLoading || singboxInstallRunning || !selectedSingboxRelease;
+  }
+  if(note){
+    if(singboxInstallRunning){
+      note.textContent = '正在下载并替换 sing-box 内核，请不要关闭应用。';
+    } else if(singboxReleases.length){
+      note.textContent = `已扫描到 ${singboxReleases.length} 个可用版本，会自动停止内核并在替换完成后按原状态恢复运行。`;
+    } else {
+      note.textContent = '会自动停止内核并在替换完成后按原状态恢复运行。';
+    }
+  }
+}
+
+function formatReleaseSize(bytes){
+  const value = Number(bytes) || 0;
+  if(value <= 0) return '';
+  if(value >= 1024 * 1024) return `${(value / 1024 / 1024).toFixed(1)} MB`;
+  return `${Math.round(value / 1024)} KB`;
+}
+
+function selectSingboxRelease(version){
+  selectedSingboxRelease = version || '';
+  renderSingboxReleaseControls();
 }
 
 function setValue(id, value){
@@ -255,6 +339,62 @@ async function runMaintenanceAction(command, successMessage){
     showToast(message);
     appendLog('[ERROR] ' + message);
     throw err;
+  }
+}
+
+async function scanSingboxReleases(){
+  if(!invoke){
+    showToast('当前不在 Tauri 环境中，无法扫描内核版本。');
+    return;
+  }
+  singboxReleaseLoading = true;
+  renderSingboxReleaseControls();
+  try{
+    singboxReleases = await invoke('list_singbox_releases');
+    selectedSingboxRelease = singboxReleases[0]?.version || '';
+    renderSingboxReleaseControls();
+    showToast(`已扫描到 ${singboxReleases.length} 个 sing-box 版本。`);
+    appendLog(`[INFO] sing-box releases loaded: ${singboxReleases.map(item => item.version).join(', ')}`);
+  }catch(err){
+    const message = formatError(err);
+    showToast(message);
+    appendLog('[ERROR] ' + message);
+  }finally{
+    singboxReleaseLoading = false;
+    renderSingboxReleaseControls();
+  }
+}
+
+async function installSelectedSingboxRelease(){
+  if(!invoke){
+    showToast('当前不在 Tauri 环境中，无法安装内核。');
+    return;
+  }
+  if(!selectedSingboxRelease){
+    showToast('请先扫描并选择一个 sing-box 版本。');
+    return;
+  }
+  if(!window.confirm(`将下载并替换当前 sing-box 内核为 v${selectedSingboxRelease}。继续？`)) return;
+
+  singboxInstallRunning = true;
+  renderSingboxReleaseControls();
+  try{
+    const result = await invoke('install_singbox_release', { version: selectedSingboxRelease });
+    showToast(result?.message || 'sing-box 内核已更新。');
+    appendLog(`[INFO] ${result?.message || 'sing-box core updated'}${result?.path ? `: ${result.path}` : ''}`);
+    await refreshMaintenanceInfo();
+    if(invoke){
+      status = await invoke('app_status');
+      renderStatus(status);
+      if(status?.coreRunning) await refreshProxies();
+    }
+  }catch(err){
+    const message = formatError(err);
+    showToast(message);
+    appendLog('[ERROR] ' + message);
+  }finally{
+    singboxInstallRunning = false;
+    renderSingboxReleaseControls();
   }
 }
 
@@ -399,3 +539,5 @@ async function saveCurrentSettings(options = {}){
     showToast(formatError(err));
   }
 }
+
+queueMicrotask(() => scrollToSettingsSection('general'));

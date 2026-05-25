@@ -1,0 +1,551 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sing-Box Neo Subscriptions</title>
+    <style>
+        :root {
+            /* 完美承接主页与节点页的视觉基因 */
+            --bg-app: #060709;
+            --bg-sidebar: rgba(255, 255, 255, 0.01);
+            --bg-card: rgba(255, 255, 255, 0.02);
+            --bg-card-hover: rgba(255, 255, 255, 0.05);
+            --border-color: rgba(255, 255, 255, 0.04);
+            
+            /* 极光主色 */
+            --color-active: #00f2fe; 
+            --color-active-gradient: linear-gradient(135deg, #00f2fe, #4facfe);
+            --color-glow: rgba(0, 242, 254, 0.15);
+            --color-success: #10b981;
+
+            /* 文本颜色分级 */
+            --text-main: #f1f5f9;
+            --text-muted: #475569;
+            --text-desc: #94a3b8;
+            
+            --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+            --radius-main: 16px;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", Roboto, sans-serif;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        body {
+            background-color: var(--bg-app);
+            color: var(--text-main);
+            display: flex;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        /* --- 侧边栏 (保持全套统一) --- */
+        .sidebar {
+            width: 76px;
+            background: var(--bg-sidebar);
+            border-right: 1px solid var(--border-color);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 32px 0;
+            justify-content: space-between;
+        }
+
+        .logo {
+            width: 36px;
+            height: 36px;
+            background: var(--color-active-gradient);
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 0 15px var(--color-glow);
+        }
+
+        .nav-group {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        .nav-item {
+            width: 44px;
+            height: 44px;
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: var(--text-muted);
+            cursor: pointer;
+            transition: all 0.3s var(--ease-out);
+        }
+
+        .nav-item.active, .nav-item:hover {
+            color: var(--text-main);
+            background: var(--bg-card);
+        }
+
+        /* --- 主内容布局 --- */
+        .main-container {
+            flex: 1;
+            padding: 40px;
+            display: flex;
+            flex-direction: column;
+            gap: 28px;
+            max-width: 900px;
+            margin: 0 auto;
+            overflow-y: auto;
+        }
+
+        .section-title {
+            font-size: 11px;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            font-weight: 600;
+            padding-left: 2px;
+            margin-bottom: 12px;
+        }
+
+        /* --- 订阅列表卡片 --- */
+        .sub-list-wrapper {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .sub-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius-main);
+            padding: 18px 24px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            transition: all 0.3s var(--ease-out);
+        }
+
+        .sub-card:hover {
+            background: var(--bg-card-hover);
+            border-color: rgba(255, 255, 255, 0.08);
+        }
+
+        .sub-left {
+            display: flex;
+            align-items: center;
+            gap: 18px;
+        }
+
+        /* 极简启用状态复选框 */
+        .custom-checkbox {
+            width: 20px;
+            height: 20px;
+            border-radius: 6px;
+            border: 2px solid var(--text-muted);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            color: transparent;
+            transition: all 0.2s;
+        }
+        .sub-card.active .custom-checkbox {
+            background: var(--color-success);
+            border-color: var(--color-success);
+            color: #fff;
+            box-shadow: 0 0 10px rgba(16, 185, 129, 0.2);
+        }
+
+        .sub-info {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+
+        .sub-name-row {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .sub-name {
+            font-size: 15px;
+            font-weight: 600;
+            letter-spacing: -0.1px;
+        }
+
+        .status-badge {
+            font-size: 10px;
+            background: rgba(16, 185, 129, 0.08);
+            color: var(--color-success);
+            padding: 2px 8px;
+            border-radius: 100px;
+            font-weight: 500;
+        }
+
+        .sub-meta-row {
+            display: flex;
+            gap: 14px;
+            font-size: 12px;
+            color: var(--text-desc);
+        }
+        .sub-meta-row span strong {
+            color: var(--text-main);
+            font-weight: 500;
+        }
+
+        /* 右侧轻量化操作图标 */
+        .sub-actions {
+            display: flex;
+            gap: 6px;
+        }
+
+        .icon-btn {
+            width: 34px;
+            height: 34px;
+            border-radius: 8px;
+            background: transparent;
+            border: none;
+            color: var(--text-muted);
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s;
+        }
+        .icon-btn:hover {
+            background: rgba(255, 255, 255, 0.05);
+            color: var(--text-main);
+        }
+        .icon-btn.delete:hover {
+            background: rgba(239, 68, 68, 0.08);
+            color: #ef4444;
+        }
+
+        /* --- 导入新订阅虚线卡片 --- */
+        .add-card {
+            background: transparent;
+            border: 1px dashed rgba(255, 255, 255, 0.1);
+            border-radius: var(--radius-main);
+            padding: 20px 24px;
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            cursor: pointer;
+            transition: all 0.3s var(--ease-out);
+        }
+
+        .add-card:hover {
+            border-color: rgba(0, 242, 254, 0.3);
+            background: rgba(0, 242, 254, 0.01);
+            box-shadow: inset 0 0 15px rgba(0, 242, 254, 0.01);
+        }
+
+        .add-icon-box {
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            background: rgba(255, 255, 255, 0.03);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: var(--text-desc);
+            transition: all 0.3s;
+        }
+        .add-card:hover .add-icon-box {
+            background: var(--color-active-gradient);
+            color: #060709;
+            box-shadow: 0 0 10px var(--color-glow);
+        }
+
+        .add-text h3 {
+            font-size: 14px;
+            font-weight: 500;
+        }
+        .add-text p {
+            font-size: 12px;
+            color: var(--text-muted);
+            margin-top: 2px;
+        }
+
+        /* --- 当前启用范围轻量标签 --- */
+        .scope-container {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+        .scope-capsule {
+            background: rgba(255, 255, 255, 0.02);
+            border: 1px solid var(--border-color);
+            padding: 6px 14px;
+            border-radius: 100px;
+            font-size: 12px;
+            color: var(--text-desc);
+        }
+        .scope-capsule strong {
+            color: var(--text-main);
+            font-weight: 500;
+        }
+
+        /* --- 高奢空气感模态弹窗 --- */
+        .modal-overlay {
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(0, 0, 0, 0.6);
+            backdrop-filter: blur(12px); /* 降噪核心：虚化背景层 */
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.4s var(--ease-out);
+            z-index: 999;
+        }
+        .modal-overlay.open {
+            opacity: 1;
+            pointer-events: auto;
+        }
+
+        .modal-card {
+            background: #0d0f14;
+            border: 1px solid rgba(255, 255, 255, 0.06);
+            border-radius: 20px;
+            width: 100%;
+            max-width: 480px;
+            padding: 28px;
+            box-shadow: 0 20px 50px rgba(0,0,0,0.5);
+            transform: scale(0.95) translateY(10px);
+            transition: transform 0.4s var(--ease-out);
+        }
+        .modal-overlay.open .modal-card {
+            transform: scale(1) translateY(0);
+        }
+
+        .modal-header h2 {
+            font-size: 18px;
+            font-weight: 600;
+            letter-spacing: -0.2px;
+        }
+        .modal-header p {
+            font-size: 12px;
+            color: var(--text-desc);
+            margin-top: 4px;
+            line-height: 1.5;
+        }
+
+        .modal-body {
+            margin-top: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+
+        /* 统一输入框区域 */
+        .modal-textarea {
+            width: 100%;
+            height: 120px;
+            background: rgba(255, 255, 255, 0.02);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 14px;
+            color: var(--text-main);
+            font-family: monospace;
+            font-size: 13px;
+            resize: none;
+            outline: none;
+            transition: all 0.3s;
+        }
+        .modal-textarea:focus {
+            border-color: rgba(0, 242, 254, 0.3);
+            background: rgba(255, 255, 255, 0.04);
+        }
+
+        /* 格式选择气泡 */
+        .format-selector {
+            display: flex;
+            gap: 6px;
+        }
+        .format-pill {
+            padding: 4px 12px;
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid var(--border-color);
+            border-radius: 100px;
+            font-size: 11px;
+            color: var(--text-desc);
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .format-pill.active, .format-pill:hover {
+            background: rgba(255, 255, 255, 0.08);
+            color: var(--text-main);
+        }
+
+        /* 底部操作按钮 */
+        .modal-footer {
+            margin-top: 24px;
+            display: flex;
+            justify-content: flex-end;
+            gap: 10px;
+        }
+        .btn {
+            height: 36px;
+            padding: 0 18px;
+            font-size: 13px;
+            font-weight: 500;
+            border-radius: 10px;
+            cursor: pointer;
+            border: none;
+            transition: all 0.3s;
+        }
+        .btn-secondary {
+            background: rgba(255, 255, 255, 0.04);
+            color: var(--text-main);
+        }
+        .btn-secondary:hover {
+            background: rgba(255, 255, 255, 0.08);
+        }
+        .btn-primary {
+            background: var(--color-active-gradient);
+            color: #060709;
+            box-shadow: 0 4px 12px rgba(0, 242, 254, 0.2);
+        }
+        .btn-primary:hover { opacity: 0.9; }
+
+    </style>
+</head>
+<body>
+
+    <aside class="sidebar">
+        <div class="logo">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#060709" stroke-width="3"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+        </div>
+        <div class="nav-group">
+            <div class="nav-item">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
+            </div>
+            <div class="nav-item">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><rect width="7" height="9" x="3" y="3" rx="1"/><rect width="7" height="5" x="14" y="3" rx="1"/><rect width="7" height="9" x="14" y="12" rx="1"/><rect width="7" height="5" x="3" y="16" rx="1"/></svg>
+            </div>
+            <div class="nav-item active">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+            </div>
+        </div>
+        <div style="height: 36px;"></div>
+    </aside>
+
+    <div class="main-container">
+        
+        <div>
+            <div class="section-title">订阅管理</div>
+            <div class="sub-list-wrapper">
+                
+                <div class="sub-card active">
+                    <div class="sub-left">
+                        <div class="custom-checkbox">
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>
+                        </div>
+                        <div class="sub-info">
+                            <div class="sub-name-row">
+                                <span class="sub-name">iaas.cloudsubmax.com #3</span>
+                                <span class="status-badge">正常</span>
+                            </div>
+                            <div class="sub-meta-row">
+                                <span>节点数量: <strong>30</strong></span>
+                                <span>更新时间: <strong>2026/5/25 09:14:24</strong></span>
+                                <span>类型: <strong>远程订阅</strong></span>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="sub-actions">
+                        <button class="icon-btn" title="同步更新">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
+                        </button>
+                        <button class="icon-btn delete" title="删除订阅">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M3 6h18M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>
+                        </button>
+                    </div>
+                </div>
+
+                <div class="add-card" id="openModalBtn">
+                    <div class="add-icon-box">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                    </div>
+                    <div class="add-text">
+                        <h3>导入新的订阅来源</h3>
+                        <p>支持远程订阅链接，也支持直接粘贴节点/分享文本</p>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+
+        <div>
+            <div class="section-title">当前启用范围</div>
+            <div class="scope-container">
+                <div class="scope-capsule">iaas.cloudsubmax.com #3 <strong>(30 节点)</strong></div>
+            </div>
+        </div>
+
+    </div>
+
+    <div class="modal-overlay" id="modalOverlay">
+        <div class="modal-card">
+            <div class="modal-header">
+                <h2>解析导入新订阅</h2>
+                <p>支持订阅 URL，或直接粘贴 vmess / vless / trojan / ss 多行节点文本内容</p>
+            </div>
+            <div class="modal-body">
+                <textarea class="modal-textarea" placeholder="https://domain.com/link...&#10;或直接粘贴多行节点内容"></textarea>
+                <div class="format-selector">
+                    <span class="format-pill">Clash Config</span>
+                    <span class="format-pill active">sing-box JSON</span>
+                    <span class="format-pill">Xray Base64</span>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" id="closeModalBtn">取消</button>
+                <button class="btn btn-primary">开始导入</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const overlay = document.getElementById('modalOverlay');
+        const openBtn = document.getElementById('openModalBtn');
+        const cancelBtn = document.getElementById('closeModalBtn');
+        const subCard = document.querySelector('.sub-card');
+
+        // 打开弹窗
+        openBtn.addEventListener('click', () => overlay.classList.add('open'));
+
+        // 关闭弹窗
+        cancelBtn.addEventListener('click', () => overlay.classList.remove('open'));
+        overlay.addEventListener('click', (e) => {
+            if(e.target === overlay) overlay.classList.remove('open');
+        });
+
+        // 订阅卡片轻量复选切换
+        subCard.addEventListener('click', (e) => {
+            // 排除右侧按钮的点击
+            if(!e.target.closest('.sub-actions')) {
+                subCard.classList.toggle('active');
+            }
+        });
+
+        // 弹窗内格式小标签切换
+        const pills = document.querySelectorAll('.format-pill');
+        pills.forEach(pill => {
+            pill.addEventListener('click', () => {
+                pills.forEach(p => p.classList.remove('active'));
+                pill.classList.add('active');
+            });
+        });
+    </script>
+</body>
+</html>

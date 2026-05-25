@@ -63,6 +63,7 @@ function renderStatus(next){
     }
   }
 
+  document.getElementById('core-control-card')?.classList.toggle('active', on && healthy);
   document.getElementById('main-tog').classList.toggle('on', on);
   document.getElementById('proxy-label').textContent = on
     ? (healthy ? '代理已启动' : '代理状态异常')
@@ -78,11 +79,20 @@ function renderStatus(next){
 
 function renderTun(on){
   document.getElementById('tun-mode-btn').classList.toggle('on', on);
+  document.getElementById('tun-card')?.classList.toggle('on', on);
   document.getElementById('tun-sub').textContent = on ? '已开启 · 接管系统流量，按当前模式分流' : '关闭 · 仅代理端口生效';
 }
 
 function renderMode(mode){
+  const labelMap = {
+    rule: '规则',
+    global: '全局',
+    direct: '直连'
+  };
+
   document.querySelectorAll('[data-mode]').forEach(button => {
     button.classList.toggle('on', button.dataset.mode === mode);
   });
+  const labelEl = document.getElementById('home-mode-label');
+  if(labelEl) labelEl.textContent = labelMap[mode] || mode || '规则';
 }

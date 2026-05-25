@@ -13,10 +13,10 @@
     "windows": [
       {
         "title": "代理客户端",
-        "width": 840,
-        "height": 640,
-        "minWidth": 760,
-        "minHeight": 600,
+        "width": 1000,
+        "height": 654,
+        "minWidth": 1000,
+        "minHeight": 654,
         "decorations": false
       }
     ],

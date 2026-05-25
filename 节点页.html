@@ -1,0 +1,551 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sing-Box Neo Nodes</title>
+    <style>
+        :root {
+            /* 延续主页的高奢暗色系 */
+            --bg-app: #060709;
+            --bg-sidebar: rgba(255, 255, 255, 0.01);
+            --bg-card: rgba(255, 255, 255, 0.02);
+            --bg-card-hover: rgba(255, 255, 255, 0.05);
+            --border-color: rgba(255, 255, 255, 0.04);
+            
+            /* 极光主色 */
+            --color-active: #00f2fe; 
+            --color-active-gradient: linear-gradient(135deg, #00f2fe, #4facfe);
+            --color-glow: rgba(0, 242, 254, 0.15);
+            
+            /* 延迟状态色 */
+            --color-success: #10b981;
+            --color-warning: #f59e0b;
+            --color-danger: #ef4444;
+            --color-neutral: #64748b;
+
+            /* 字体颜色 */
+            --text-main: #f1f5f9;
+            --text-muted: #475569;
+            --text-desc: #94a3b8;
+            
+            --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+            --radius-main: 16px;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", Roboto, sans-serif;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        body {
+            background-color: var(--bg-app);
+            color: var(--text-main);
+            display: flex;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        /* --- 侧边栏 --- */
+        .sidebar {
+            width: 76px;
+            background: var(--bg-sidebar);
+            border-right: 1px solid var(--border-color);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 32px 0;
+            justify-content: space-between;
+        }
+
+        .logo {
+            width: 36px;
+            height: 36px;
+            background: var(--color-active-gradient);
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 0 15px var(--color-glow);
+        }
+
+        .nav-group {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        .nav-item {
+            width: 44px;
+            height: 44px;
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: var(--text-muted);
+            cursor: pointer;
+            transition: all 0.3s var(--ease-out);
+        }
+
+        .nav-item.active, .nav-item:hover {
+            color: var(--text-main);
+            background: var(--bg-card);
+        }
+
+        /* --- 主内容布局 --- */
+        .main-container {
+            flex: 1;
+            padding: 32px 40px;
+            display: flex;
+            flex-direction: column;
+            gap: 24px;
+            max-width: 1120px;
+            margin: 0 auto;
+            overflow-y: auto;
+        }
+
+        /* 顶部整合搜索栏 */
+        .search-wrapper {
+            position: relative;
+            display: flex;
+            align-items: center;
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 14px;
+            padding: 0 16px;
+            height: 46px;
+            transition: all 0.3s;
+        }
+        .search-wrapper:focus-within {
+            border-color: rgba(0, 242, 254, 0.3);
+            background: rgba(255, 255, 255, 0.04);
+        }
+
+        .search-input {
+            width: 100%;
+            background: transparent;
+            border: none;
+            outline: none;
+            color: var(--text-main);
+            font-size: 14px;
+            margin-left: 12px;
+        }
+        .search-input::placeholder { color: var(--text-muted); }
+
+        /* 极简流式过滤胶囊 */
+        .filter-flow {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+
+        .filter-label {
+            font-size: 11px;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-right: 8px;
+        }
+
+        .pill-btn {
+            padding: 6px 14px;
+            border-radius: 100px;
+            background: transparent;
+            border: 1px solid var(--border-color);
+            color: var(--text-desc);
+            font-size: 12px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            transition: all 0.3s var(--ease-out);
+        }
+        .pill-btn span {
+            font-size: 10px;
+            opacity: 0.5;
+        }
+        .pill-btn.active, .pill-btn:hover {
+            background: rgba(255, 255, 255, 0.05);
+            color: var(--text-main);
+            border-color: rgba(255, 255, 255, 0.1);
+        }
+        .pill-btn.active {
+            background: rgba(0, 242, 254, 0.06);
+            border-color: rgba(0, 242, 254, 0.2);
+            color: var(--color-active);
+        }
+
+        /* 分组控制面板区 */
+        .group-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-top: 8px;
+        }
+        .group-info h2 {
+            font-size: 18px;
+            font-weight: 600;
+            letter-spacing: -0.3px;
+        }
+        .group-info p {
+            font-size: 12px;
+            color: var(--text-desc);
+            margin-top: 2px;
+        }
+        .group-info p strong { color: var(--color-active); font-weight: 500;}
+
+        .action-group {
+            display: flex;
+            gap: 10px;
+        }
+        .action-btn {
+            height: 34px;
+            padding: 0 16px;
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid var(--border-color);
+            color: var(--text-main);
+            font-size: 12px;
+            font-weight: 500;
+            border-radius: 10px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            transition: all 0.3s;
+        }
+        .action-btn:hover {
+            background: rgba(255, 255, 255, 0.07);
+            border-color: rgba(255, 255, 255, 0.1);
+        }
+        .action-btn.primary {
+            background: var(--color-active-gradient);
+            color: #060709;
+            border: none;
+            box-shadow: 0 4px 12px rgba(0, 242, 254, 0.2);
+        }
+        .action-btn.primary:hover { opacity: 0.9; }
+
+        /* --- 节点流线型网格 --- */
+        .nodes-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+            gap: 14px;
+        }
+
+        /* 重新定义的极简卡片 */
+        .node-tile {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius-main);
+            padding: 16px;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            height: 104px;
+            position: relative;
+            cursor: pointer;
+            transition: all 0.3s var(--ease-out);
+        }
+        .node-tile:hover {
+            background: var(--bg-card-hover);
+            transform: translateY(-1px);
+            border-color: rgba(255, 255, 255, 0.08);
+        }
+
+        /* 当前使用中高亮态 */
+        .node-tile.active {
+            background: rgba(0, 242, 254, 0.02);
+            border-color: var(--color-active);
+            box-shadow: 0 4px 20px rgba(0, 242, 254, 0.05), inset 0 0 12px rgba(0, 242, 254, 0.02);
+        }
+
+        .node-top {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            gap: 12px;
+        }
+        .node-name {
+            font-size: 14px;
+            font-weight: 600;
+            letter-spacing: -0.1px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        
+        /* 霓虹指示灯 */
+        .node-badge {
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            flex-shrink: 0;
+            margin-top: 6px;
+        }
+        .badge-green { background: var(--color-success); box-shadow: 0 0 8px var(--color-success); }
+        .badge-yellow { background: var(--color-warning); box-shadow: 0 0 8px var(--color-warning); }
+        .badge-red { background: var(--color-danger); box-shadow: 0 0 8px var(--color-danger); }
+        .badge-gray { background: var(--color-neutral); }
+
+        .node-bottom {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .node-meta {
+            display: flex;
+            gap: 6px;
+            align-items: center;
+        }
+        .tag-proto {
+            font-size: 10px;
+            font-family: monospace;
+            background: rgba(255, 255, 255, 0.04);
+            padding: 2px 6px;
+            border-radius: 4px;
+            color: var(--text-desc);
+        }
+        .node-tile.active .tag-proto {
+            background: rgba(0, 242, 254, 0.1);
+            color: var(--color-active);
+        }
+
+        .node-latency {
+            font-size: 12px;
+            font-weight: 500;
+            color: var(--text-muted);
+        }
+        .latency-low { color: var(--color-success); }
+        .latency-mid { color: var(--color-warning); }
+        .latency-high { color: var(--color-danger); }
+
+        /* 单个测速小微按钮 */
+        .tile-speed-btn {
+            background: transparent;
+            border: none;
+            color: var(--text-muted);
+            cursor: pointer;
+            opacity: 0;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+        }
+        .node-tile:hover .tile-speed-btn { opacity: 1; }
+        .tile-speed-btn:hover { color: var(--text-main); }
+
+        /* 闪烁加载动画（全网测速时使用） */
+        @keyframes pulse-loading {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.4; }
+        }
+        .testing {
+            animation: pulse-loading 1.2s infinite ease-in-out;
+        }
+    </style>
+</head>
+<body>
+
+    <aside class="sidebar">
+        <div class="logo">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#060709" stroke-width="3"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+        </div>
+        <div class="nav-group">
+            <div class="nav-item">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
+            </div>
+            <div class="nav-item active">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><rect width="7" height="9" x="3" y="3" rx="1"/><rect width="7" height="5" x="14" y="3" rx="1"/><rect width="7" height="9" x="14" y="12" rx="1"/><rect width="7" height="5" x="3" y="16" rx="1"/></svg>
+            </div>
+            <div class="nav-item">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+            </div>
+        </div>
+        <div style="height: 36px;"></div>
+    </aside>
+
+    <div class="main-container">
+        
+        <div class="search-wrapper">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" stroke-width="2.5"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+            <input type="text" class="search-input" placeholder="键入关键字搜索节点或分组...">
+        </div>
+
+        <div class="filter-flow">
+            <span class="filter-label">订阅源</span>
+            <button class="pill-btn active">全部来源 <span>30</span></button>
+            <button class="pill-btn">cloudsubmax.com #3 <span>30</span></button>
+        </div>
+
+        <div class="group-header">
+            <div class="group-info">
+                <h2>PROXY 分组</h2>
+                <p>当前节点: <strong id="currentNodeName">日本 [直连]</strong> · 延迟 <span class="latency-low">415 ms</span></p>
+            </div>
+            <div class="action-group">
+                <button class="action-btn" id="btnAuto">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg>
+                    自动选择
+                </button>
+                <button class="action-btn primary" id="btnGlobalSpeed">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+                    全网测速
+                </button>
+            </div>
+        </div>
+
+        <div class="nodes-grid" id="nodesGrid">
+            
+            <div class="node-tile active">
+                <div class="node-top">
+                    <span class="node-name">日本 [直连]</span>
+                    <div class="node-badge badge-green"></div>
+                </div>
+                <div class="node-bottom">
+                    <div class="node-meta">
+                        <span class="tag-proto">VLESS</span>
+                    </div>
+                    <span class="node-latency latency-low">415 ms</span>
+                </div>
+            </div>
+
+            <div class="node-tile">
+                <div class="node-top">
+                    <span class="node-name">香港 13</span>
+                    <div class="node-badge badge-green"></div>
+                </div>
+                <div class="node-bottom">
+                    <div class="node-meta">
+                        <span class="tag-proto">SS</span>
+                        <button class="tile-speed-btn"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg></button>
+                    </div>
+                    <span class="node-latency latency-low">75 ms</span>
+                </div>
+            </div>
+
+            <div class="node-tile">
+                <div class="node-top">
+                    <span class="node-name">香港 01</span>
+                    <div class="node-badge badge-green"></div>
+                </div>
+                <div class="node-bottom">
+                    <div class="node-meta">
+                        <span class="tag-proto">SS</span>
+                    </div>
+                    <span class="node-latency latency-low">97 ms</span>
+                </div>
+            </div>
+
+            <div class="node-tile">
+                <div class="node-top">
+                    <span class="node-name">香港 05 电信推荐</span>
+                    <div class="node-badge badge-yellow"></div>
+                </div>
+                <div class="node-bottom">
+                    <div class="node-meta">
+                        <span class="tag-proto">SS</span>
+                    </div>
+                    <span class="node-latency latency-mid">119 ms</span>
+                </div>
+            </div>
+
+            <div class="node-tile">
+                <div class="node-top">
+                    <span class="node-name">英国 A</span>
+                    <div class="node-badge badge-red"></div>
+                </div>
+                <div class="node-bottom">
+                    <div class="node-meta">
+                        <span class="tag-proto">SS</span>
+                    </div>
+                    <span class="node-latency latency-high">949 ms</span>
+                </div>
+            </div>
+
+            <div class="node-tile">
+                <div class="node-top">
+                    <span class="node-name">香港 06 电信推荐</span>
+                    <div class="node-badge badge-gray"></div>
+                </div>
+                <div class="node-bottom">
+                    <div class="node-meta">
+                        <span class="tag-proto">SS</span>
+                    </div>
+                    <span class="node-latency">--</span>
+                </div>
+            </div>
+
+            <div class="node-tile">
+                <div class="node-top">
+                    <span class="node-name">意大利 Premium</span>
+                    <div class="node-badge badge-gray"></div>
+                </div>
+                <div class="node-bottom">
+                    <div class="node-meta">
+                        <span class="tag-proto">VLESS</span>
+                    </div>
+                    <span class="node-latency">--</span>
+                </div>
+            </div>
+
+        </div>
+
+    </div>
+
+    <script>
+        // 节点单选高亮
+        const tiles = document.querySelectorAll('.node-tile');
+        const currentNodeText = document.getElementById('currentNodeName');
+
+        tiles.forEach(tile => {
+            tile.addEventListener('click', () => {
+                tiles.forEach(t => t.classList.remove('active'));
+                tile.classList.add('active');
+                
+                // 同步更新顶部当前节点文本
+                const name = tile.querySelector('.node-name').innerText;
+                currentNodeText.innerText = name;
+            });
+        });
+
+        // 模拟一键全网测速动效
+        const speedBtn = document.getElementById('btnGlobalSpeed');
+        speedBtn.addEventListener('click', () => {
+            tiles.forEach(tile => {
+                const latencyEl = tile.querySelector('.node-latency');
+                latencyEl.innerText = "测速中...";
+                latencyEl.classList.add('testing');
+            });
+
+            // 1.5秒后赋予模拟的全新随机测试结果
+            setTimeout(() => {
+                tiles.forEach(tile => {
+                    const latencyEl = tile.querySelector('.node-latency');
+                    latencyEl.classList.remove('testing');
+                    const mockLatency = Math.floor(Math.random() * 400) + 30;
+                    latencyEl.innerText = `${mockLatency} ms`;
+                    
+                    // 动态变换颜色
+                    latencyEl.className = "node-latency";
+                    const badge = tile.querySelector('.node-badge');
+                    badge.className = "node-badge";
+
+                    if(mockLatency < 100) {
+                        latencyEl.classList.add('latency-low');
+                        badge.classList.add('badge-green');
+                    } else if(mockLatency < 250) {
+                        latencyEl.classList.add('latency-mid');
+                        badge.classList.add('badge-yellow');
+                    } else {
+                        latencyEl.classList.add('latency-high');
+                        badge.classList.add('badge-red');
+                    }
+                });
+            }, 1500);
+        });
+    </script>
+</body>
+</html>

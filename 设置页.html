@@ -1,0 +1,676 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sing-Box Neo Settings</title>
+    <style>
+        :root {
+            /* 100% 沿用并深化前三页的高奢科技黑基因 */
+            --bg-app: #060709;
+            --bg-sidebar: rgba(255, 255, 255, 0.01);
+            --bg-card: rgba(255, 255, 255, 0.02);
+            --bg-card-hover: rgba(255, 255, 255, 0.05);
+            --border-color: rgba(255, 255, 255, 0.04);
+            
+            /* 极光主高亮 */
+            --color-active: #00f2fe; 
+            --color-active-gradient: linear-gradient(135deg, #00f2fe, #4facfe);
+            --color-glow: rgba(0, 242, 254, 0.15);
+
+            /* 危险动作警告色 */
+            --color-danger: #ef4444;
+            --color-danger-bg: rgba(239, 68, 68, 0.05);
+            
+            --text-main: #f1f5f9;
+            --text-muted: #475569;
+            --text-desc: #94a3b8;
+            
+            --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+            --radius-main: 14px;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", Roboto, sans-serif;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        body {
+            background-color: var(--bg-app);
+            color: var(--text-main);
+            display: flex;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        /* --- 侧边栏 --- */
+        .sidebar {
+            width: 76px;
+            background: var(--bg-sidebar);
+            border-right: 1px solid var(--border-color);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 32px 0;
+            justify-content: space-between;
+        }
+
+        .logo {
+            width: 36px;
+            height: 36px;
+            background: var(--color-active-gradient);
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 0 15px var(--color-glow);
+        }
+
+        .nav-group {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        .nav-item {
+            width: 44px;
+            height: 44px;
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: var(--text-muted);
+            cursor: pointer;
+            transition: all 0.3s var(--ease-out);
+        }
+
+        .nav-item.active, .nav-item:hover {
+            color: var(--text-main);
+            background: var(--bg-card);
+        }
+
+        /* --- 主内容区 --- */
+        .main-container {
+            flex: 1;
+            padding: 32px 40px;
+            display: flex;
+            flex-direction: column;
+            gap: 24px;
+            max-width: 960px;
+            margin: 0 auto;
+            overflow: hidden;
+        }
+
+        /* 顶部横向分栏导航 */
+        .tabs-navbar {
+            background: rgba(255, 255, 255, 0.01);
+            border: 1px solid var(--border-color);
+            padding: 4px;
+            border-radius: 14px;
+            display: flex;
+            gap: 4px;
+            flex-shrink: 0;
+        }
+
+        .tab-nav-btn {
+            flex: 1;
+            padding: 10px 0;
+            background: transparent;
+            border: none;
+            color: var(--text-desc);
+            font-size: 13px;
+            font-weight: 500;
+            border-radius: 10px;
+            cursor: pointer;
+            transition: all 0.3s var(--ease-out);
+        }
+        .tab-nav-btn:hover { color: var(--text-main); }
+        .tab-nav-btn.active {
+            background: var(--bg-card-hover);
+            color: var(--text-main);
+            box-shadow: inset 0 1px 0 rgba(255,255,255,0.05);
+        }
+
+        /* 面板滚动容器 */
+        .panes-scroll-area {
+            flex: 1;
+            overflow-y: auto;
+            padding-right: 4px;
+        }
+
+        /* 基础面板容器（默认隐藏） */
+        .settings-pane {
+            display: none;
+            flex-direction: column;
+            gap: 12px;
+            animation: fadeIn 0.3s var(--ease-out);
+        }
+        .settings-pane.active { display: flex; }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(4px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        /* --- 单个设置行项设计 --- */
+        .setting-row {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius-main);
+            padding: 16px 20px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 24px;
+            transition: all 0.25s;
+        }
+        .setting-row:hover {
+            background: var(--bg-card-hover);
+            border-color: rgba(255, 255, 255, 0.06);
+        }
+
+        .setting-meta {
+            display: flex;
+            align-items: flex-start;
+            gap: 16px;
+        }
+        .setting-icon {
+            color: var(--text-desc);
+            margin-top: 2px;
+            flex-shrink: 0;
+        }
+        .setting-text {
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+        }
+        .setting-title {
+            font-size: 14px;
+            font-weight: 600;
+            letter-spacing: -0.1px;
+        }
+        .setting-desc {
+            font-size: 12px;
+            color: var(--text-muted);
+            line-height: 1.4;
+        }
+
+        /* 表单输入组件统一重塑 */
+        .ios-toggle { display: none; }
+        .toggle-label {
+            display: block;
+            width: 44px;
+            height: 24px;
+            background: rgba(255, 255, 255, 0.06);
+            border-radius: 100px;
+            cursor: pointer;
+            position: relative;
+            flex-shrink: 0;
+            transition: all 0.3s var(--ease-out);
+        }
+        .toggle-label::after {
+            content: '';
+            position: absolute;
+            top: 3px; left: 3px;
+            width: 18px; height: 18px;
+            background: #fff;
+            border-radius: 50%;
+            transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+        }
+        .ios-toggle:checked + .toggle-label {
+            background: var(--color-active-gradient);
+            box-shadow: 0 0 12px var(--color-glow);
+        }
+        .ios-toggle:checked + .toggle-label::after { left: 23px; }
+
+        /* 数值/文本输入框 */
+        .neo-input {
+            width: 90px;
+            height: 32px;
+            background: rgba(0,0,0,0.2);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            color: var(--text-main);
+            font-size: 13px;
+            text-align: center;
+            outline: none;
+            font-family: monospace;
+            transition: all 0.3s;
+        }
+        .neo-input:focus { border-color: rgba(0, 242, 254, 0.3); }
+        .neo-input.wide { width: 320px; text-align: left; padding: 0 12px; }
+
+        /* 文本域 */
+        .neo-textarea {
+            width: 320px;
+            height: 64px;
+            background: rgba(0,0,0,0.2);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            color: var(--text-main);
+            font-size: 12px;
+            padding: 8px 12px;
+            outline: none;
+            resize: none;
+            font-family: monospace;
+            transition: all 0.3s;
+        }
+        .neo-textarea:focus { border-color: rgba(0, 242, 254, 0.3); }
+
+        /* 下拉选择器 */
+        .neo-select {
+            height: 32px;
+            padding: 0 12px;
+            background: rgba(255,255,255,0.03);
+            border: 1px solid var(--border-color);
+            color: var(--text-main);
+            border-radius: 8px;
+            font-size: 13px;
+            outline: none;
+            cursor: pointer;
+        }
+
+        /* 三选一策略专属组 */
+        .inline-selector {
+            display: flex;
+            gap: 4px;
+            background: rgba(0,0,0,0.2);
+            padding: 3px;
+            border-radius: 8px;
+            border: 1px solid var(--border-color);
+        }
+        .inline-btn {
+            padding: 4px 12px;
+            background: transparent;
+            border: none;
+            color: var(--text-desc);
+            font-size: 12px;
+            font-weight: 500;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .inline-btn.active {
+            background: rgba(255,255,255,0.06);
+            color: var(--text-main);
+        }
+
+        /* --- 运维页专属：数据路径卡片设计 --- */
+        .path-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 12px;
+            margin-bottom: 8px;
+        }
+        .path-box {
+            background: rgba(255,255,255,0.01);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 12px 16px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .path-meta-text {
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+            overflow: hidden;
+        }
+        .path-label { font-size: 11px; color: var(--text-muted); text-transform: uppercase; }
+        .path-string { font-size: 12px; color: var(--text-desc); font-family: monospace; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;}
+        .path-actions { display: flex; gap: 4px; flex-shrink: 0;}
+        .path-btn {
+            width: 28px; height: 28px; border-radius: 6px; background: transparent; border: none; color: var(--text-muted); cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all 0.2s;
+        }
+        .path-btn:hover { background: rgba(255,255,255,0.04); color: var(--text-main); }
+
+        /* 动作维护按钮大网格 */
+        .actions-btn-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 10px;
+        }
+        .maint-btn {
+            height: 38px;
+            background: rgba(255,255,255,0.02);
+            border: 1px solid var(--border-color);
+            color: var(--text-main);
+            font-size: 13px;
+            font-weight: 500;
+            border-radius: 10px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            transition: all 0.2s;
+        }
+        .maint-btn:hover { background: rgba(255,255,255,0.05); border-color: rgba(255,255,255,0.08); }
+        /* 危险清理类动作样式隔离 */
+        .maint-btn.danger-action { color: #f87171; background: var(--color-danger-bg); border-color: rgba(239, 68, 68, 0.1); }
+        .maint-btn.danger-action:hover { background: rgba(239, 68, 68, 0.1); border-color: rgba(239, 68, 68, 0.2); }
+
+    </style>
+</head>
+<body>
+
+    <aside class="sidebar">
+        <div class="logo">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#060709" stroke-width="3"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+        </div>
+        <div class="nav-group">
+            <div class="nav-item">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
+            </div>
+            <div class="nav-item">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><rect width="7" height="9" x="3" y="3" rx="1"/><rect width="7" height="5" x="14" y="3" rx="1"/><rect width="7" height="9" x="14" y="12" rx="1"/><rect width="7" height="5" x="3" y="16" rx="1"/></svg>
+            </div>
+            <div class="nav-item">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+            </div>
+            <div class="nav-item active">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+            </div>
+        </div>
+        <div style="height: 36px;"></div>
+    </aside>
+
+    <div class="main-container">
+        
+        <nav class="tabs-navbar">
+            <button class="tab-nav-btn active" data-target="pane-general">常规设置</button>
+            <button class="tab-nav-btn" data-target="pane-proxy">代理设置</button>
+            <button class="tab-nav-btn" data-target="pane-dns">DNS / TUN 高级</button>
+            <button class="tab-nav-btn" data-target="pane-sub">订阅与转换</button>
+            <button class="tab-nav-btn" data-target="pane-maint">运行维护</button>
+        </nav>
+
+        <div class="panes-scroll-area">
+            
+            <div class="settings-pane active" id="pane-general">
+                <div class="setting-row">
+                    <div class="setting-meta">
+                        <div class="setting-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg></div>
+                        <div class="setting-text">
+                            <span class="setting-title">开机自动运行</span>
+                            <span class="setting-desc">写入系统登录自启注册表，随电脑启动静默拉起客户端。</span>
+                        </div>
+                    </div>
+                    <div>
+                        <input type="checkbox" id="g-1" class="ios-toggle" checked>
+                        <label for="g-1" class="toggle-label"></label>
+                    </div>
+                </div>
+                <div class="setting-row">
+                    <div class="setting-meta">
+                        <div class="setting-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg></div>
+                        <div class="setting-text">
+                            <span class="setting-title">应用启动后自动拉起内核</span>
+                            <span class="setting-desc">打开软件时即自动启动 sing-box 核心，无需手动点击首页开关。</span>
+                        </div>
+                    </div>
+                    <div>
+                        <input type="checkbox" id="g-2" class="ios-toggle" checked>
+                        <label for="g-2" class="toggle-label"></label>
+                    </div>
+                </div>
+                <div class="setting-row">
+                    <div class="setting-meta">
+                        <div class="setting-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><line x1="9" y1="3" x2="9" y2="21"/></svg></div>
+                        <div class="setting-text">
+                            <span class="setting-title">启动时隐藏主窗口</span>
+                            <span class="setting-desc">自启或打开时不弹出主界面，直接无感进入系统托盘后台。</span>
+                        </div>
+                    </div>
+                    <div>
+                        <input type="checkbox" id="g-3" class="ios-toggle">
+                        <label for="g-3" class="toggle-label"></label>
+                    </div>
+                </div>
+                <div class="setting-row">
+                    <div class="setting-meta">
+                        <div class="setting-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M18 6L6 18M6 6l12 12"/></svg></div>
+                        <div class="setting-text">
+                            <span class="setting-title">关闭窗口时隐藏到托盘</span>
+                            <span class="setting-desc">点击主窗口关闭按钮时彻底避免误关软件，退出请在右下角托盘菜单操作。</span>
+                        </div>
+                    </div>
+                    <div>
+                        <input type="checkbox" id="g-4" class="ios-toggle" checked>
+                        <label for="g-4" class="toggle-label"></label>
+                    </div>
+                </div>
+                <div class="setting-row">
+                    <div class="setting-meta">
+                        <div class="setting-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg></div>
+                        <div class="setting-text">
+                            <span class="setting-title">异常退出时通知</span>
+                            <span class="setting-desc">若内核发生崩溃或意外闪退中断，在系统右下角弹出预警提示。</span>
+                        </div>
+                    </div>
+                    <div>
+                        <input type="checkbox" id="g-5" class="ios-toggle" checked>
+                        <label for="g-5" class="toggle-label"></label>
+                    </div>
+                </div>
+            </div>
+
+            <div class="settings-pane" id="pane-proxy">
+                <div class="setting-row">
+                    <div class="setting-meta">
+                        <div class="setting-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10z"/></svg></div>
+                        <div class="setting-text">
+                            <span class="setting-title">本地 Mixed 端口</span>
+                            <span class="setting-desc">HTTP / SOCKS 混合代理入口，非 TUN 模式下将被用于配置系统代理。</span>
+                        </div>
+                    </div>
+                    <input type="text" class="neo-input" value="7890">
+                </div>
+                <div class="setting-row">
+                    <div class="setting-meta">
+                        <div class="setting-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg></div>
+                        <div class="setting-text">
+                            <span class="setting-title">Clash API 端口</span>
+                            <span class="setting-desc">节点页、外部控制、延迟测速及运行探活依赖的核心外部控制端口。</span>
+                        </div>
+                    </div>
+                    <input type="text" class="neo-input" value="9090">
+                </div>
+                <div class="setting-row">
+                    <div class="setting-meta">
+                        <div class="setting-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg></div>
+                        <div class="setting-text">
+                            <span class="setting-title">Clash API Secret</span>
+                            <span class="setting-desc">用于本地 API 的安全鉴权密钥。留空时后台会自动生成随机 UUID。</span>
+                        </div>
+                    </div>
+                    <input type="text" class="neo-input wide" value="282d59ea-e8c7-4c14-9f3b-c3e3fb3ca0c2">
+                </div>
+                <div class="setting-row">
+                    <div class="setting-meta">
+                        <div class="setting-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 17H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11a2 2 0 0 1 2 2v1M8 21h12a2 2 0 0 0 2-2v-9a2 2 0 0 0-2-2H8a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2z"/></svg></div>
+                        <div class="setting-text">
+                            <span class="setting-title">允许局域网连接</span>
+                            <span class="setting-desc">开启后监听地址从 127.0.0.1 变为 0.0.0.0，允许同局域网的其他设备接入。</span>
+                        </div>
+                    </div>
+                    <div>
+                        <input type="checkbox" id="p-4" class="ios-toggle" checked>
+                        <label for="p-4" class="toggle-label"></label>
+                    </div>
+                </div>
+                <div class="setting-row">
+                    <div class="setting-meta">
+                        <div class="setting-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg></div>
+                        <div class="setting-text">
+                            <span class="setting-title">规则模式 Fallback 策略</span>
+                            <span class="setting-desc">当规则未命中任何匹配时，决定默认兜底走直连还是走代理。</span>
+                        </div>
+                    </div>
+                    <select class="neo-select">
+                        <option>direct (直连兜底)</option>
+                        <option>proxy (代理兜底)</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="settings-pane" id="pane-dns">
+                <div class="setting-row">
+                    <div class="setting-meta">
+                        <div class="setting-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg></div>
+                        <div class="setting-text">
+                            <span class="setting-title">自定义 DNS 服务器</span>
+                            <span class="setting-desc">每行一个地址。第一行优先作为直连国家域名解析，第二行作为远程。</span>
+                        </div>
+                    </div>
+                    <textarea class="neo-textarea">223.5.5.5&#10;https://1.1.1.1/dns-query</textarea>
+                </div>
+                <div class="setting-row">
+                    <div class="setting-meta">
+                        <div class="setting-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10z"/><path d="M12 6v6l4 2"/></svg></div>
+                        <div class="setting-text">
+                            <span class="setting-title">Fake-IP 虚拟网段 (IPv4)</span>
+                            <span class="setting-desc">用于 fake-dns 返回的虚拟内部局域网分配池。</span>
+                        </div>
+                    </div>
+                    <input type="text" class="neo-input wide" style="width:160px" value="198.18.0.0/15">
+                </div>
+                <div class="setting-row">
+                    <div class="setting-meta">
+                        <div class="setting-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/></svg></div>
+                        <div class="setting-text">
+                            <span class="setting-title">TUN 虚拟网卡设备名称</span>
+                            <span class="setting-desc">写入系统的虚拟网络适配器设备名，可在网络连线中可见。</span>
+                        </div>
+                    </div>
+                    <input type="text" class="neo-input" style="width:160px" value="singbox_tun">
+                </div>
+                <div class="setting-row">
+                    <div class="setting-meta">
+                        <div class="setting-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M11 5L6 9H2v6h4l5 4V5z"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/></svg></div>
+                        <div class="setting-text">
+                            <span class="setting-title">Strict Route (严格路由)</span>
+                            <span class="setting-desc">更严格地强制限制系统流量全数由 TUN 接口接管，防止任何侧漏。</span>
+                        </div>
+                    </div>
+                    <div>
+                        <input type="checkbox" id="d-4" class="ios-toggle" checked>
+                        <label for="d-4" class="toggle-label"></label>
+                    </div>
+                </div>
+            </div>
+
+            <div class="settings-pane" id="pane-sub">
+                <div class="setting-row">
+                    <div class="setting-meta">
+                        <div class="setting-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/></svg></div>
+                        <div class="setting-text">
+                            <span class="setting-title">第三方订阅转换 URL</span>
+                            <span class="setting-desc">当本地无法解析标准订阅格式时，通过远程后端安全转码为 sing-box 兼容的 JSON。</span>
+                        </div>
+                    </div>
+                    <input type="text" class="neo-input wide" value="https://converter.example.com">
+                </div>
+                <div class="setting-row">
+                    <div class="setting-meta">
+                        <div class="setting-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg></div>
+                        <div class="setting-text">
+                            <span class="setting-title">订阅自动更新间隔</span>
+                            <span class="setting-desc">后台定时无感下发拉取云端节点，失败将写入事件日志。</span>
+                        </div>
+                    </div>
+                    <select class="neo-select">
+                        <option>每天自动同步</option>
+                        <option>每 12 小时</option>
+                        <option>从不自动更新</option>
+                    </select>
+                </div>
+                <div class="setting-row">
+                    <div class="setting-meta">
+                        <div class="setting-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><path d="m4.93 4.93 4.24 4.24"/></svg></div>
+                        <div class="setting-text">
+                            <span class="setting-title">自动选择最优节点</span>
+                            <span class="setting-desc">测速计划完成后，后台将自动为策略分组切向延迟最低的极速可用节点。</span>
+                        </div>
+                    </div>
+                    <div>
+                        <input type="checkbox" id="s-3" class="ios-toggle" checked>
+                        <label for="s-3" class="toggle-label"></label>
+                    </div>
+                </div>
+            </div>
+
+            <div class="settings-pane" id="pane-maint">
+                
+                <div class="setting-row" style="background: rgba(255,255,255,0.01)">
+                    <div class="setting-meta">
+                        <div class="setting-icon" style="color:var(--color-active)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg></div>
+                        <div class="setting-text">
+                            <span class="setting-title">Sing-box 生产级内核架构</span>
+                            <span class="setting-desc">sing-box version 1.13.12 Environment: go1.25.9 windows/amd64 Tags: with_gvisor, with_quic...</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="path-grid">
+                    <div class="path-box">
+                        <div class="path-meta-text">
+                            <span class="path-label">应用数据 (APP DATA)</span>
+                            <span class="path-string">C:\Users\14844\AppData\Roaming\dev.wepbox.client</span>
+                        </div>
+                        <div class="path-actions">
+                            <button class="path-btn" title="复制路径"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg></button>
+                        </div>
+                    </div>
+                    <div class="path-box">
+                        <div class="path-meta-text">
+                            <span class="path-label">当前运行日志 (LOG)</span>
+                            <span class="path-string">...\dev.wepbox.client\logs\sing-box.log</span>
+                        </div>
+                        <div class="path-actions">
+                            <button class="path-btn" title="复制路径"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg></button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="actions-btn-grid">
+                    <button class="maint-btn">打开应用数据目录</button>
+                    <button class="maint-btn">打开日志目录</button>
+                    <button class="maint-btn">打开本地设置文件</button>
+                    <button class="maint-btn">刷新全部远程订阅</button>
+                    <button class="maint-btn">检查当前配置 JSON</button>
+                    <button class="maint-btn">导出系统诊断信息</button>
+                    <button class="maint-btn danger-action">清理订阅缓存数据</button>
+                    <button class="maint-btn danger-action">清理系统残留代理环境</button>
+                </div>
+
+            </div>
+
+        </div>
+
+    </div>
+
+    <script>
+        // 顶部横向 Tab 分栏高奢无缝切换
+        const tabs = document.querySelectorAll('.tab-nav-btn');
+        const panes = document.querySelectorAll('.settings-pane');
+
+        tabs.forEach(tab => {
+            tab.addEventListener('click', () => {
+                // 1. 清理当前高亮状态
+                tabs.forEach(t => t.classList.remove('active'));
+                panes.forEach(p => p.classList.remove('active'));
+
+                // 2. 赋予点击项高亮
+                tab.classList.add('active');
+                const targetPaneId = tab.getAttribute('data-target');
+                document.getElementById(targetPaneId).classList.add('active');
+            });
+        });
+    </script>
+</body>
+</html>

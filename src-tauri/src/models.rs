@@ -14,6 +14,7 @@ pub struct AppSettings {
     pub fallback: FallbackPolicy,
     pub auto_update_hours: u16,
     pub follow_system_theme: bool,
+    pub theme_color: String,
     pub notify_on_failure: bool,
     pub auto_launch: bool,
     pub auto_start_proxy: bool,
@@ -53,7 +54,8 @@ impl Default for AppSettings {
             mode: ProxyMode::Rule,
             fallback: FallbackPolicy::Direct,
             auto_update_hours: 24,
-            follow_system_theme: true,
+            follow_system_theme: false,
+            theme_color: "cyan".to_owned(),
             notify_on_failure: true,
             auto_launch: true,
             auto_start_proxy: true,
@@ -244,6 +246,16 @@ pub struct MaintenanceInfo {
 pub struct MaintenanceActionResult {
     pub message: String,
     pub path: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SingboxReleaseInfo {
+    pub version: String,
+    pub tag_name: String,
+    pub published_at: Option<String>,
+    pub asset_name: String,
+    pub asset_size: Option<u64>,
 }
 
 fn default_true() -> bool {

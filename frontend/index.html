@@ -3,11 +3,11 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Next-Gen Proxy Client</title>
+  <title>Sing-Box Neo Client</title>
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/tabler-icons.min.css">
   <link rel="stylesheet" href="./styles/app.css">
 </head>
-<body class="theme-mint">
+<body class="theme-cyan">
 
 <div class="app">
   <div class="titlebar" data-tauri-drag-region>
@@ -24,7 +24,7 @@
   </div>
 
   <div class="sidebar">
-    <div class="logo"><i class="ti ti-shield-bolt"></i></div>
+    <div class="logo" data-tauri-drag-region><i class="ti ti-stack-2"></i></div>
     <button class="nb on" onclick="go('home')" aria-label="首页"><i class="ti ti-home"></i></button>
     <button class="nb" onclick="go('nodes')" aria-label="节点"><i class="ti ti-server"></i></button>
     <button class="nb" onclick="go('subscriptions')" aria-label="订阅"><i class="ti ti-link"></i></button>
@@ -34,142 +34,114 @@
   <div class="content">
     <div class="pg on" id="pg-home">
       <div class="home-shell">
-        <div class="card home-control-bar" id="core-control-card">
-          <div class="home-control-main">
-            <div class="home-control-kicker">核心控制</div>
-            <div class="home-control-status">
-              <div class="home-control-title" id="proxy-label">代理服务已关闭</div>
+        <header class="card premium-header" id="core-control-card">
+          <div class="status-left">
+            <div class="status-pulse"></div>
+            <div>
+              <div class="status-title" id="proxy-label">代理服务已关闭</div>
               <div class="home-control-sub" id="proxy-node">等待启动内核</div>
             </div>
           </div>
-          <div class="home-control-meta">
-            <span class="hero-chip">混合端口 <strong id="home-port">7890</strong></span>
-            <span class="hero-chip">本月流量 <strong>64.2 / 200G</strong></span>
-            <span class="hero-chip">节点页负责切换分组与测速</span>
-          </div>
-          <div class="home-control-action">
+          <div class="header-right">
+            <div class="info-minimal">
+              <div class="info-label">混合端口</div>
+              <div class="info-value"><span id="home-port">7890</span></div>
+            </div>
+            <div class="info-minimal">
+              <div class="info-label">当前模式</div>
+              <div class="info-value"><span id="home-mode-label">规则</span></div>
+            </div>
+            <div class="info-minimal">
+              <div class="info-label">本月流量</div>
+              <div class="info-value">64.2 <span>/ 200 GB</span></div>
+            </div>
             <button class="big-tog" id="main-tog" onclick="toggleProxy()" aria-label="代理开关"></button>
           </div>
-        </div>
+        </header>
 
-        <div>
-          <div class="sec-label">快速模式</div>
-          <div class="home-mode-grid">
-            <button class="quick-mode-card" id="tun-mode-btn" onclick="toggleTun()" aria-label="切换 TUN 模式">
-              <div class="quick-mode-icon"><i class="ti ti-network"></i></div>
-              <div class="quick-mode-name">TUN</div>
-              <div class="quick-mode-desc" id="tun-sub">关闭 · 仅代理端口生效</div>
-            </button>
-            <button class="quick-mode-card on" data-mode="rule" onclick="setMode(this, 'rule')">
-              <div class="quick-mode-icon"><i class="ti ti-adjustments-horizontal"></i></div>
-              <div class="quick-mode-name">规则</div>
-              <div class="quick-mode-desc">按策略分流</div>
-            </button>
-            <button class="quick-mode-card" data-mode="global" onclick="setMode(this, 'global')">
-              <div class="quick-mode-icon"><i class="ti ti-world"></i></div>
-              <div class="quick-mode-name">全局</div>
-              <div class="quick-mode-desc">接管流量全部走代理</div>
-            </button>
-            <button class="quick-mode-card" data-mode="direct" onclick="setMode(this, 'direct')">
-              <div class="quick-mode-icon"><i class="ti ti-plug-connected-x"></i></div>
-              <div class="quick-mode-name">直连</div>
-              <div class="quick-mode-desc">绕过代理</div>
-            </button>
-          </div>
+        <div class="routing-split-panel">
+          <section class="routing-section">
+            <div class="section-caption">分流策略</div>
+            <div class="capsule-container">
+              <button class="capsule-btn on" data-mode="rule" onclick="setMode(this, 'rule')">
+                <span class="quick-mode-name">规则分流</span>
+              </button>
+              <button class="capsule-btn" data-mode="global" onclick="setMode(this, 'global')">
+                <span class="quick-mode-name">全局代理</span>
+              </button>
+              <button class="capsule-btn" data-mode="direct" onclick="setMode(this, 'direct')">
+                <span class="quick-mode-name">直接连接</span>
+              </button>
+            </div>
+          </section>
+
+          <section class="routing-section">
+            <div class="section-caption">虚拟网卡</div>
+            <div class="tun-card" id="tun-card">
+              <div class="tun-copy">
+                <div class="tun-name">TUN</div>
+                <div class="tun-sub" id="tun-sub">关闭 · 仅代理端口生效</div>
+              </div>
+              <button class="tog" id="tun-mode-btn" onclick="toggleTun()" aria-label="切换 TUN 模式"></button>
+            </div>
+          </section>
         </div>
 
         <div class="home-bottom-grid">
           <div>
-            <div class="sec-label">运行概览</div>
-            <div class="card overview-list-card">
-              <div class="overview-item">
-                <div class="overview-copy">
-                  <div class="overview-label">实时上传</div>
-                  <div class="overview-hint">当前出口上行速率</div>
+            <div class="sec-label">系统监控</div>
+            <div class="card chart-card">
+              <div class="chart-card-head">
+                <div>
+                  <div class="chart-title">速率趋势（实时采样）</div>
+                  <div class="chart-sub">最近 12 次采样的吞吐变化</div>
                 </div>
-                <div class="overview-value" id="up-speed">0.0 <span class="su">MB/s</span></div>
-              </div>
-              <div class="overview-item">
-                <div class="overview-copy">
-                  <div class="overview-label">实时下载</div>
-                  <div class="overview-hint">当前入口下行速率</div>
-                </div>
-                <div class="overview-value" id="dn-speed">0.0 <span class="su">MB/s</span></div>
-              </div>
-              <div class="overview-item">
-                <div class="overview-copy">
-                  <div class="overview-label">内核负载</div>
-                  <div class="overview-hint">sidecar 当前 CPU 占用</div>
-                </div>
-                <div class="overview-metric">
-                  <div class="overview-inline" id="cpu-val">0%</div>
-                  <div class="progress-bar slim"><div class="progress-inner" id="cpu-bar"></div></div>
+                <div class="chart-hover-stats">
+                  <span id="chart-hover-time">当前</span>
+                  <strong id="chart-hover-down">下载 0.0 MB/s</strong>
+                  <span id="chart-hover-up">上传 0.0 MB/s</span>
                 </div>
               </div>
-              <div class="overview-item">
-                <div class="overview-copy">
-                  <div class="overview-label">内存占用</div>
-                  <div class="overview-hint">运行时内存占比</div>
+              <div class="traffic-chart-shell">
+                <div class="chart-scale" aria-hidden="true">
+                  <span id="chart-scale-max">3.0 MB/s</span>
+                  <span id="chart-scale-mid">1.5 MB/s</span>
+                  <span>0</span>
                 </div>
-                <div class="overview-metric">
-                  <div class="overview-inline" id="mem-val">0%</div>
-                  <div class="progress-bar slim"><div class="progress-inner" id="mem-bar"></div></div>
+                <div class="chart-panel" id="traffic-chart-panel">
+                  <div class="traffic-chart">
+                    <div class="chart-bars" id="traffic-chart-bars"></div>
+                  </div>
+                  <div class="chart-axis-x">
+                    <span>12 秒前</span>
+                    <span>现在</span>
+                  </div>
                 </div>
-              </div>
-              <div class="overview-item">
-                <div class="overview-copy">
-                  <div class="overview-label">并发连接</div>
-                  <div class="overview-hint">当前活跃连接数估计</div>
-                </div>
-                <div class="overview-value mono" id="conn-count">0</div>
               </div>
             </div>
           </div>
 
           <div class="home-side-stack">
             <div>
-              <div class="sec-label">速率趋势</div>
-              <div class="card chart-card">
-                <div class="chart-card-head">
-                  <div>
-                    <div class="chart-title">近 12 个采样点</div>
-                    <div class="chart-sub">悬停查看任一点上传 / 下载速率</div>
-                  </div>
-                  <div class="chart-hover-stats">
-                    <span id="chart-hover-time">当前</span>
-                    <strong id="chart-hover-down">下载 0.0 MB/s</strong>
-                    <span id="chart-hover-up">上传 0.0 MB/s</span>
-                  </div>
+              <div class="sec-label">运行概览</div>
+              <div class="home-metrics-grid">
+                <div class="card metric-card">
+                  <div class="card-title">实时下载</div>
+                  <div class="card-value" id="dn-speed">0.0 <span>MB/s</span></div>
                 </div>
-                <div class="traffic-chart-shell">
-                  <div class="chart-scale">
-                    <span id="chart-scale-max">3.0 MB/s</span>
-                    <span id="chart-scale-mid">1.5 MB/s</span>
-                    <span>0</span>
-                  </div>
-                  <div class="chart-panel" id="traffic-chart-panel">
-                    <svg viewBox="0 0 560 168" preserveAspectRatio="none" class="traffic-chart">
-                      <defs>
-                        <linearGradient id="chart-gradient" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="0%" stop-color="var(--accent)" stop-opacity="0.26"/>
-                          <stop offset="100%" stop-color="var(--accent)" stop-opacity="0"/>
-                        </linearGradient>
-                      </defs>
-                      <path class="chart-grid-path" d="M 0 24 H 560"></path>
-                      <path class="chart-grid-path" d="M 0 84 H 560"></path>
-                      <path class="chart-grid-path" d="M 0 144 H 560"></path>
-                      <path id="graph-down-fill" class="live-chart-fill" d="M 0 144 L 560 144 Z"></path>
-                      <path id="graph-down-path" class="live-chart-path" d="M 0 144 L 560 144"></path>
-                      <path id="graph-up-path" class="live-chart-path secondary" d="M 0 144 L 560 144"></path>
-                      <line id="chart-hover-line" x1="0" y1="16" x2="0" y2="148" class="chart-hover-line"></line>
-                      <circle id="chart-hover-dot-down" cx="0" cy="144" r="4" class="chart-hover-dot"></circle>
-                      <circle id="chart-hover-dot-up" cx="0" cy="144" r="4" class="chart-hover-dot secondary"></circle>
-                    </svg>
-                    <div class="chart-axis-x">
-                      <span>12 秒前</span>
-                      <span>现在</span>
-                    </div>
-                  </div>
+                <div class="card metric-card">
+                  <div class="card-title">实时上传</div>
+                  <div class="card-value" id="up-speed">0.0 <span>MB/s</span></div>
+                </div>
+                <div class="card metric-card">
+                  <div class="card-title">内核负载</div>
+                  <div class="card-value" id="cpu-val">0 <span>%</span></div>
+                  <div class="mini-progress"><div class="progress-bar" id="cpu-bar"></div></div>
+                </div>
+                <div class="card metric-card">
+                  <div class="card-title">内存占用</div>
+                  <div class="card-value" id="mem-val">0 <span>%</span></div>
+                  <div class="mini-progress"><div class="progress-bar" id="mem-bar"></div></div>
                 </div>
               </div>
             </div>
@@ -194,8 +166,8 @@
 
     <div class="pg" id="pg-nodes">
       <div class="header-row">
-        <div class="search-bar" style="flex:1; margin-right:12px">
-          <i class="ti ti-search" style="color:var(--text-secondary)"></i>
+        <div class="search-wrapper">
+          <i class="ti ti-search"></i>
           <input id="node-search-input" type="text" placeholder="输入关键字搜索节点或分组..." oninput="filterNodes(this.value)">
         </div>
         <button class="test-btn" onclick="testAll()">
@@ -304,7 +276,7 @@
           </div>
         </div>
 
-        <section class="settings-section" id="settings-section-general">
+        <section class="settings-section active" id="settings-section-general">
           <div class="sec-label">常规设置</div>
           <div class="settings-section-intro">控制应用启动行为、窗口行为和异常提示。优先保留普通用户能直接理解的选项。</div>
           <div class="card">
@@ -317,7 +289,6 @@
                 </div>
               </div>
               <div class="setting-actions">
-                <span class="setting-badge live">已接入</span>
                 <button class="tog" id="auto-launch-tog" onclick="toggleSetting('autoLaunch')"></button>
               </div>
             </div>
@@ -330,7 +301,6 @@
                 </div>
               </div>
               <div class="setting-actions">
-                <span class="setting-badge live">已接入</span>
                 <button class="tog" id="auto-start-proxy-tog" onclick="toggleSetting('autoStartProxy')"></button>
               </div>
             </div>
@@ -343,7 +313,6 @@
                 </div>
               </div>
               <div class="setting-actions">
-                <span class="setting-badge live">已接入</span>
                 <button class="tog" id="start-hidden-tog" onclick="toggleSetting('startHidden')"></button>
               </div>
             </div>
@@ -356,7 +325,6 @@
                 </div>
               </div>
               <div class="setting-actions">
-                <span class="setting-badge live">已接入</span>
                 <button class="tog" id="hide-to-tray-tog" onclick="toggleSetting('hideToTray')"></button>
               </div>
             </div>
@@ -369,7 +337,6 @@
                 </div>
               </div>
               <div class="setting-actions">
-                <span class="setting-badge live">已接入</span>
                 <button class="tog" id="notify-on-failure-tog" onclick="toggleSetting('notifyOnFailure')"></button>
               </div>
             </div>
@@ -377,13 +344,30 @@
               <div class="row-l">
                 <i class="ti ti-device-desktop ri"></i>
                 <div>
-                  <div class="rn">跟随系统主题</div>
-                  <div class="rs">根据系统浅色 / 深色偏好切换当前界面主题。</div>
+                  <div class="rn">浅色模式</div>
+                  <div class="rs">切换为浅色界面，适合白天或强光环境。</div>
                 </div>
               </div>
               <div class="setting-actions">
-                <span class="setting-badge live">已接入</span>
                 <button class="tog" id="follow-system-theme-tog" onclick="toggleSetting('followSystemTheme')"></button>
+              </div>
+            </div>
+            <div class="row">
+              <div class="row-l">
+                <i class="ti ti-palette ri"></i>
+                <div>
+                  <div class="rn">主题色</div>
+                  <div class="rs">选择导航、按钮、开关和高亮状态使用的强调色。</div>
+                </div>
+              </div>
+              <div class="setting-actions">
+                <div class="theme-picker" aria-label="主题色选择">
+                  <button class="theme-dot mint" data-theme-color="mint" onclick="updateThemeColor('mint')" aria-label="薄荷绿"></button>
+                  <button class="theme-dot blue" data-theme-color="blue" onclick="updateThemeColor('blue')" aria-label="蓝色"></button>
+                  <button class="theme-dot cyan" data-theme-color="cyan" onclick="updateThemeColor('cyan')" aria-label="青色"></button>
+                  <button class="theme-dot purple" data-theme-color="purple" onclick="updateThemeColor('purple')" aria-label="紫色"></button>
+                  <button class="theme-dot orange" data-theme-color="orange" onclick="updateThemeColor('orange')" aria-label="橙色"></button>
+                </div>
               </div>
             </div>
           </div>
@@ -402,7 +386,6 @@
                 </div>
               </div>
               <div class="setting-actions">
-                <span class="setting-badge live">已接入</span>
                 <input class="setting-input short" id="local-mixed-port-input" inputmode="numeric" placeholder="7890" onchange="updatePortSetting('localMixedPort', this.value)">
               </div>
             </div>
@@ -415,7 +398,6 @@
                 </div>
               </div>
               <div class="setting-actions">
-                <span class="setting-badge live">已接入</span>
                 <input class="setting-input short" id="clash-api-port-input" inputmode="numeric" placeholder="9090" onchange="updatePortSetting('clashApiPort', this.value)">
               </div>
             </div>
@@ -428,7 +410,6 @@
                 </div>
               </div>
               <div class="setting-actions wide">
-                <span class="setting-badge live">已接入</span>
                 <input class="setting-input" id="clash-api-secret-input" placeholder="自动生成或自定义 secret" onchange="updateTextSetting('clashApiSecret', this.value, { nullable: false, restartCore: true })">
               </div>
             </div>
@@ -441,7 +422,6 @@
                 </div>
               </div>
               <div class="setting-actions">
-                <span class="setting-badge live">已接入</span>
                 <button class="tog" id="allow-lan-tog" onclick="toggleSetting('allowLan')"></button>
               </div>
             </div>
@@ -468,7 +448,6 @@
                 </div>
               </div>
               <div class="setting-actions">
-                <span class="setting-badge live">已接入</span>
                 <select class="setting-select" id="fallback-select" onchange="updateSelectSetting('fallback', this.value, { restartCore: true })">
                   <option value="direct">direct</option>
                   <option value="proxy">proxy</option>
@@ -484,7 +463,6 @@
                 </div>
               </div>
               <div class="setting-actions">
-                <span class="setting-badge live">已接入</span>
                 <button class="tog" id="tun-mode-setting-tog" onclick="toggleTun()"></button>
               </div>
             </div>
@@ -497,7 +475,6 @@
                 </div>
               </div>
               <div class="setting-actions">
-                <span class="setting-badge live">已接入</span>
                 <button class="tog" id="dns-guard-tog" onclick="toggleSetting('dnsGuardEnabled')"></button>
               </div>
             </div>
@@ -510,7 +487,6 @@
                 </div>
               </div>
               <div class="setting-actions">
-                <span class="setting-badge live">已接入</span>
                 <button class="tog" id="ipv6-tog" onclick="toggleSetting('ipv6Enabled')"></button>
               </div>
             </div>
@@ -530,7 +506,6 @@
                 </div>
               </div>
               <div class="setting-actions wide top">
-                <span class="setting-badge live">已接入</span>
                 <textarea class="setting-textarea" id="dns-servers-input" placeholder="223.5.5.5&#10;https://1.1.1.1/dns-query" onchange="updateCustomDnsServers(this.value)"></textarea>
               </div>
             </div>
@@ -543,7 +518,6 @@
                 </div>
               </div>
               <div class="setting-actions">
-                <span class="setting-badge live">已接入</span>
                 <button class="tog" id="fake-dns-tog" onclick="toggleSetting('fakeDnsEnabled', { restartCore: true })"></button>
               </div>
             </div>
@@ -556,7 +530,6 @@
                 </div>
               </div>
               <div class="setting-actions wide">
-                <span class="setting-badge live">已接入</span>
                 <input class="setting-input" id="fake-ipv4-input" placeholder="198.18.0.0/15" onchange="updateTextSetting('fakeIpV4Range', this.value, { nullable: false, restartCore: true })">
               </div>
             </div>
@@ -569,7 +542,6 @@
                 </div>
               </div>
               <div class="setting-actions wide">
-                <span class="setting-badge live">已接入</span>
                 <input class="setting-input" id="fake-ipv6-input" placeholder="fc00::/18" onchange="updateTextSetting('fakeIpV6Range', this.value, { nullable: false, restartCore: true })">
               </div>
             </div>
@@ -582,7 +554,6 @@
                 </div>
               </div>
               <div class="setting-actions wide">
-                <span class="setting-badge live">已接入</span>
                 <input class="setting-input" id="tun-interface-name-input" placeholder="singbox_tun" onchange="updateTextSetting('tunInterfaceName', this.value, { nullable: false, restartCore: true })">
               </div>
             </div>
@@ -595,7 +566,6 @@
                 </div>
               </div>
               <div class="setting-actions">
-                <span class="setting-badge live">已接入</span>
                 <input class="setting-input short" id="tun-mtu-input" inputmode="numeric" placeholder="1500" onchange="updateNumericSetting('tunMtu', this.value, { restartCore: true, invalidMessage: '请输入有效 MTU。' })">
               </div>
             </div>
@@ -608,7 +578,6 @@
                 </div>
               </div>
               <div class="setting-actions">
-                <span class="setting-badge live">已接入</span>
                 <button class="tog" id="tun-auto-route-tog" onclick="toggleSetting('tunAutoRoute', { restartCore: true })"></button>
               </div>
             </div>
@@ -621,7 +590,6 @@
                 </div>
               </div>
               <div class="setting-actions">
-                <span class="setting-badge live">已接入</span>
                 <button class="tog" id="tun-strict-route-tog" onclick="toggleSetting('tunStrictRoute', { restartCore: true })"></button>
               </div>
             </div>
@@ -634,7 +602,6 @@
                 </div>
               </div>
               <div class="setting-actions wide top">
-                <span class="setting-badge live">已接入</span>
                 <textarea class="setting-textarea" id="tun-route-exclude-input" placeholder="192.168.0.0/16&#10;10.0.0.0/8" onchange="updateRouteExcludeAddresses(this.value)"></textarea>
               </div>
             </div>
@@ -647,7 +614,6 @@
                 </div>
               </div>
               <div class="setting-actions">
-                <span class="setting-badge live">已接入</span>
                 <button class="tog" id="udp-acceleration-tog" onclick="toggleSetting('udpAccelerationEnabled')"></button>
               </div>
             </div>
@@ -660,7 +626,6 @@
                 </div>
               </div>
               <div class="setting-actions">
-                <span class="setting-badge live">已接入</span>
                 <button class="tog" id="experimental-quic-tog" onclick="toggleSetting('experimentalQuic')"></button>
               </div>
             </div>
@@ -680,7 +645,6 @@
                 </div>
               </div>
               <div class="setting-actions wide">
-                <span class="setting-badge live">已接入</span>
                 <input class="setting-input" id="converter-url-input" placeholder="https://converter.example.com" onchange="updateTextSetting('converterUrl', this.value)">
               </div>
             </div>
@@ -693,7 +657,6 @@
                 </div>
               </div>
               <div class="setting-actions">
-                <span class="setting-badge live">已接入</span>
                 <select class="setting-select" id="auto-update-hours" onchange="updateNumericSetting('autoUpdateHours', this.value)">
                   <option value="0">关闭</option>
                   <option value="6">每 6 小时</option>
@@ -711,7 +674,6 @@
                 </div>
               </div>
               <div class="setting-actions">
-                <span class="setting-badge live">已接入</span>
                 <select class="setting-select" id="speed-test-interval" onchange="updateSelectSetting('speedTestInterval', this.value)">
                   <option value="never">从不</option>
                   <option value="every30Minutes">每 30 分钟</option>
@@ -729,7 +691,6 @@
                 </div>
               </div>
               <div class="setting-actions">
-                <span class="setting-badge live">已接入</span>
                 <button class="tog" id="auto-select-fastest-tog" onclick="toggleSetting('autoSelectFastest')"></button>
               </div>
             </div>
@@ -742,7 +703,6 @@
                 </div>
               </div>
               <div class="setting-actions">
-                <span class="setting-badge live">已接入</span>
                 <button class="tog" id="auto-switch-on-failure-tog" onclick="toggleSetting('autoSwitchOnFailure')"></button>
               </div>
             </div>
@@ -765,9 +725,25 @@
                 </div>
               </div>
               <div class="setting-actions">
-                <span class="setting-badge live">已接入</span>
                 <span class="setting-value" id="maintenance-sidecar-version">等待后端连接</span>
               </div>
+            </div>
+            <div class="row row-stack">
+              <div class="row-l">
+                <i class="ti ti-download ri"></i>
+                <div>
+                  <div class="rn">sing-box 内核更新</div>
+                  <div class="rs">从 SagerNet/sing-box 发布页获取 Windows 版本，下载后替换当前 sidecar。</div>
+                </div>
+              </div>
+              <div class="settings-kernel-updater">
+                <select class="setting-select" id="singbox-release-select" onchange="selectSingboxRelease(this.value)">
+                  <option value="">先扫描版本</option>
+                </select>
+                <button class="ghost-mini" id="singbox-scan-btn" onclick="scanSingboxReleases()">扫描版本</button>
+                <button class="ghost-mini" id="singbox-install-btn" onclick="installSelectedSingboxRelease()">安装所选版本</button>
+              </div>
+              <div class="settings-note compact" id="singbox-release-note">会自动停止内核并在替换完成后按原状态恢复运行。</div>
             </div>
             <div class="row row-stack">
               <div class="row-l">

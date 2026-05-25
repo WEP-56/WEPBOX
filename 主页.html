@@ -1,0 +1,600 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sing-Box Neo Dashboard v2</title>
+    <style>
+        :root {
+            /* 全局高奢暗色系 */
+            --bg-app: #060709;
+            --bg-sidebar: rgba(255, 255, 255, 0.01);
+            --bg-card: rgba(255, 255, 255, 0.03);
+            --bg-card-hover: rgba(255, 255, 255, 0.06);
+            --border-color: rgba(255, 255, 255, 0.04);
+            
+            /* 极光安全色（激活态） */
+            --color-active: #00f2fe; 
+            --color-active-gradient: linear-gradient(135deg, #00f2fe, #4facfe);
+            --color-glow: rgba(0, 242, 254, 0.15);
+            
+            /* TUN 专用紫色微光（做一下视觉区分） */
+            --color-tun: #a855f7;
+            --color-tun-gradient: linear-gradient(135deg, #a855f7, #9333ea);
+            --color-tun-glow: rgba(168, 85, 247, 0.2);
+
+            /* 状态文本颜色 */
+            --text-main: #f1f5f9;
+            --text-muted: #475569;
+            --text-desc: #94a3b8;
+            
+            --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+            --radius-main: 20px;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", Roboto, sans-serif;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        body {
+            background-color: var(--bg-app);
+            color: var(--text-main);
+            display: flex;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        /* --- 极简侧边栏 --- */
+        .sidebar {
+            width: 76px;
+            background: var(--bg-sidebar);
+            border-right: 1px solid var(--border-color);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 32px 0;
+            justify-content: space-between;
+        }
+
+        .logo {
+            width: 36px;
+            height: 36px;
+            background: var(--color-active-gradient);
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 0 15px var(--color-glow);
+        }
+
+        .nav-group {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        .nav-item {
+            width: 44px;
+            height: 44px;
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: var(--text-muted);
+            cursor: pointer;
+            transition: all 0.3s var(--ease-out);
+        }
+
+        .nav-item.active, .nav-item:hover {
+            color: var(--text-main);
+            background: var(--bg-card);
+        }
+
+        /* --- 主内容布局 --- */
+        .main-container {
+            flex: 1;
+            padding: 32px 40px;
+            display: flex;
+            flex-direction: column;
+            gap: 24px;
+            max-width: 1040px;
+            margin: 0 auto;
+            overflow-y: auto;
+        }
+
+        /* 顶部紧凑状态栏 */
+        .premium-header {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius-main);
+            padding: 18px 24px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            backdrop-filter: blur(20px);
+            transition: all 0.5s var(--ease-out);
+        }
+
+        .status-left {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+        }
+
+        .status-pulse {
+            width: 8px;
+            height: 8px;
+            background: var(--text-muted);
+            border-radius: 50%;
+            position: relative;
+            transition: all 0.4s;
+        }
+
+        .active .status-pulse {
+            background: var(--color-active);
+            box-shadow: 0 0 10px var(--color-active);
+        }
+
+        .status-title {
+            font-size: 15px;
+            font-weight: 600;
+            letter-spacing: -0.1px;
+        }
+
+        .header-right {
+            display: flex;
+            align-items: center;
+            gap: 32px;
+        }
+
+        .info-minimal {
+            display: flex;
+            flex-direction: column;
+            align-items: flex-end;
+            gap: 2px;
+        }
+
+        .info-label {
+            font-size: 11px;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .info-value {
+            font-size: 13px;
+            font-weight: 500;
+        }
+
+        .info-value span {
+            color: var(--text-muted);
+            font-size: 11px;
+        }
+
+        /* 通用 iOS 风格开关 */
+        .ios-toggle { display: none; }
+        .toggle-label {
+            display: block;
+            width: 46px;
+            height: 26px;
+            background: rgba(255, 255, 255, 0.06);
+            border-radius: 100px;
+            cursor: pointer;
+            position: relative;
+            border: 1px solid rgba(255, 255, 255, 0.02);
+            transition: all 0.4s var(--ease-out);
+        }
+
+        .toggle-label::after {
+            content: '';
+            position: absolute;
+            top: 3px;
+            left: 3px;
+            width: 18px;
+            height: 18px;
+            background: #fff;
+            border-radius: 50%;
+            transition: all 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+            box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+        }
+
+        /* 主开关激活 */
+        #neoToggle:checked + .toggle-label {
+            background: var(--color-active-gradient);
+            box-shadow: 0 0 15px var(--color-glow);
+        }
+        #neoToggle:checked + .toggle-label::after { left: 23px; }
+
+        /* TUN 开关激活 */
+        #tunToggle:checked + .toggle-label {
+            background: var(--color-tun-gradient);
+            box-shadow: 0 0 15px var(--color-tun-glow);
+        }
+        #tunToggle:checked + .toggle-label::after { left: 23px; }
+
+
+        /* --- 路由策略与 TUN 并行区 --- */
+        .routing-split-panel {
+            display: grid;
+            grid-template-columns: 2fr 1fr;
+            gap: 16px;
+        }
+
+        .routing-section {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .section-caption {
+            font-size: 11px;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            font-weight: 600;
+            padding-left: 4px;
+        }
+
+        /* 3选1分流胶囊 */
+        .capsule-container {
+            background: rgba(255, 255, 255, 0.01);
+            border: 1px solid var(--border-color);
+            padding: 4px;
+            border-radius: 14px;
+            display: flex;
+            gap: 4px;
+            height: 46px;
+            align-items: center;
+        }
+
+        .capsule-btn {
+            flex: 1;
+            height: 100%;
+            background: transparent;
+            border: none;
+            color: var(--text-desc);
+            font-size: 13px;
+            font-weight: 500;
+            border-radius: 10px;
+            cursor: pointer;
+            transition: all 0.3s var(--ease-out);
+        }
+
+        .capsule-btn:hover { color: var(--text-main); }
+        .capsule-btn.active {
+            background: var(--bg-card-hover);
+            color: var(--text-main);
+            box-shadow: inset 0 1px 0 rgba(255,255,255,0.05);
+        }
+
+        /* 独立出来的 TUN 卡片 */
+        .tun-card {
+            background: rgba(255, 255, 255, 0.01);
+            border: 1px solid var(--border-color);
+            border-radius: 14px;
+            padding: 0 18px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            height: 46px;
+        }
+
+        .tun-info {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .tun-name {
+            font-size: 13px;
+            font-weight: 500;
+        }
+        .tun-desc {
+            font-size: 10px;
+            color: var(--text-muted);
+        }
+
+        /* --- 仪表盘核心网格 --- */
+        .dashboard-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 16px;
+        }
+
+        .sub-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 16px;
+        }
+
+        .card-neo {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius-main);
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            min-height: 110px;
+            transition: all 0.3s var(--ease-out);
+        }
+
+        .card-neo:hover {
+            background: var(--bg-card-hover);
+            border-color: rgba(255, 255, 255, 0.06);
+        }
+
+        .card-title {
+            font-size: 12px;
+            color: var(--text-muted);
+            font-weight: 500;
+        }
+
+        .card-value {
+            font-size: 20px;
+            font-weight: 600;
+            letter-spacing: -0.5px;
+            margin-top: 8px;
+        }
+
+        .card-value span {
+            font-size: 12px;
+            color: var(--text-muted);
+            font-weight: 400;
+            margin-left: 2px;
+        }
+
+        /* 进度微线条 */
+        .mini-progress {
+            width: 100%;
+            height: 3px;
+            background: rgba(255, 255, 255, 0.03);
+            border-radius: 100px;
+            overflow: hidden;
+            margin-top: 8px;
+        }
+        .progress-bar {
+            height: 100%;
+            background: var(--text-muted);
+            width: 0;
+            transition: width 0.6s var(--ease-out), background 0.4s;
+        }
+        .active .progress-bar { background: var(--color-active); }
+
+        /* --- 趋势图表卡片 --- */
+        .chart-card {
+            grid-column: span 1;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+        }
+
+        .chart-wrapper {
+            height: 55px;
+            display: flex;
+            align-items: flex-end;
+            gap: 3px;
+            margin-top: 12px;
+        }
+
+        .chart-pillar {
+            flex: 1;
+            background: rgba(255, 255, 255, 0.03);
+            border-radius: 2px 2px 0 0;
+            height: 10%;
+            transition: height 0.6s var(--ease-out), background 0.4s;
+        }
+
+        /* --- 无感化底栏组件（日志） --- */
+        .footer-log {
+            background: rgba(255, 255, 255, 0.01);
+            border: 1px solid var(--border-color);
+            border-radius: 14px;
+            padding: 12px 18px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .log-text {
+            font-family: monospace;
+            font-size: 11px;
+            color: var(--text-muted);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+    </style>
+</head>
+<body>
+
+    <aside class="sidebar">
+        <div class="logo">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#060709" stroke-width="3"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+        </div>
+        <div class="nav-group">
+            <div class="nav-item active">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
+            </div>
+            <div class="nav-item">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><rect width="7" height="9" x="3" y="3" rx="1"/><rect width="7" height="5" x="14" y="3" rx="1"/><rect width="7" height="9" x="14" y="12" rx="1"/><rect width="7" height="5" x="3" y="16" rx="1"/></svg>
+            </div>
+            <div class="nav-item">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+            </div>
+        </div>
+        <div style="height: 36px;"></div>
+    </aside>
+
+    <div class="main-container" id="mainContainer">
+        
+        <header class="premium-header" id="headerCard">
+            <div class="status-left">
+                <div class="status-pulse"></div>
+                <div class="status-title" id="statusTitle">未连接网络</div>
+            </div>
+            <div class="header-right">
+                <div class="info-minimal">
+                    <div class="info-label">本月可用流量</div>
+                    <div class="info-value">64.2 <span>/ 200 GB</span></div>
+                </div>
+                <div>
+                    <input type="checkbox" id="neoToggle" class="ios-toggle">
+                    <label for="neoToggle" class="toggle-label"></label>
+                </div>
+            </div>
+        </header>
+
+        <div class="routing-split-panel">
+            <section class="routing-section">
+                <div class="section-caption">分流策略</div>
+                <div class="capsule-container">
+                    <button class="capsule-btn active">规则分流</button>
+                    <button class="capsule-btn">全局代理</button>
+                    <button class="capsule-btn">直接连接</button>
+                </div>
+            </section>
+
+            <section class="routing-section">
+                <div class="section-caption">虚拟网卡</div>
+                <div class="tun-card">
+                    <div class="tun-info">
+                        <span class="tun-name">TUN 模式</span>
+                        <span class="tun-desc" id="tunDesc">接管全局系统流量</span>
+                    </div>
+                    <div>
+                        <input type="checkbox" id="tunToggle" class="ios-toggle">
+                        <label for="tunToggle" class="toggle-label"></label>
+                    </div>
+                </div>
+            </section>
+        </div>
+
+        <section class="routing-section">
+            <div class="section-caption">系统监控</div>
+            <div class="dashboard-grid">
+                
+                <div class="card-neo chart-card">
+                    <div class="card-title">速率趋势 (实时采样)</div>
+                    <div class="chart-wrapper">
+                        <div class="chart-pillar" style="height: 15%"></div>
+                        <div class="chart-pillar" style="height: 30%"></div>
+                        <div class="chart-pillar" style="height: 10%"></div>
+                        <div class="chart-pillar" style="height: 55%"></div>
+                        <div class="chart-pillar" style="height: 40%"></div>
+                        <div class="chart-pillar" style="height: 70%"></div>
+                        <div class="chart-pillar" style="height: 85%"></div>
+                        <div class="chart-pillar" style="height: 50%"></div>
+                        <div class="chart-pillar" style="height: 95%"></div>
+                        <div class="chart-pillar" style="height: 35%"></div>
+                        <div class="chart-pillar" style="height: 20%"></div>
+                        <div class="chart-pillar" style="height: 45%"></div>
+                    </div>
+                </div>
+
+                <div class="sub-grid">
+                    <div class="card-neo">
+                        <div class="card-title">实时下行</div>
+                        <div class="card-value" id="downSpeed">0.0 <span>MB/s</span></div>
+                    </div>
+                    <div class="card-neo">
+                        <div class="card-title">实时上行</div>
+                        <div class="card-value" id="upSpeed">0.0 <span>MB/s</span></div>
+                    </div>
+                    <div class="card-neo">
+                        <div>
+                            <div class="card-title">处理器</div>
+                            <div class="card-value">2 <span>%</span></div>
+                        </div>
+                        <div class="mini-progress"><div class="progress-bar" style="width: 2%;"></div></div>
+                    </div>
+                    <div class="card-neo">
+                        <div>
+                            <div class="card-title">内存</div>
+                            <div class="card-value">14 <span>%</span></div>
+                        </div>
+                        <div class="mini-progress"><div class="progress-bar" style="width: 14%;"></div></div>
+                    </div>
+                </div>
+
+            </div>
+        </section>
+
+        <footer class="footer-log">
+            <div class="log-text" id="logText">System IDLE. Waiting for connection...</div>
+            <div class="section-caption" style="padding: 0; cursor: pointer;">展开日志</div>
+        </footer>
+
+    </div>
+
+    <script>
+        const toggle = document.getElementById('neoToggle');
+        const tunToggle = document.getElementById('tunToggle');
+        const tunDesc = document.getElementById('tunDesc');
+        const container = document.getElementById('mainContainer');
+        const title = document.getElementById('statusTitle');
+        const logText = document.getElementById('logText');
+        const downSpeed = document.getElementById('downSpeed');
+        const upSpeed = document.getElementById('upSpeed');
+        const pillars = document.querySelectorAll('.chart-pillar');
+
+        // 主连接开关
+        toggle.addEventListener('change', (e) => {
+            if (e.target.checked) {
+                container.classList.add('active');
+                title.innerText = "安全连接已建立";
+                title.style.color = "var(--color-active)";
+                logText.innerText = "[INFO] sing-box core started. Outbound [HK-Premium] connected.";
+                logText.style.color = "rgba(255,255,255,0.4)";
+                
+                downSpeed.innerHTML = "12.4 <span>MB/s</span>";
+                upSpeed.innerHTML = "1.8 <span>MB/s</span>";
+
+                pillars.forEach(p => {
+                    p.style.background = 'var(--color-active-gradient)';
+                    p.style.boxShadow = '0 0 8px var(--color-glow)';
+                    p.style.height = `${Math.floor(Math.random() * 80) + 20}%`;
+                });
+            } else {
+                container.classList.remove('active');
+                title.innerText = "未连接网络";
+                title.style.color = "var(--text-main)";
+                logText.innerText = "System IDLE. Waiting for connection...";
+                logText.style.color = "var(--text-muted)";
+                
+                downSpeed.innerHTML = "0.0 <span>MB/s</span>";
+                upSpeed.innerHTML = "0.0 <span>MB/s</span>";
+
+                pillars.forEach(p => {
+                    p.style.background = 'rgba(255, 255, 255, 0.03)';
+                    p.style.boxShadow = 'none';
+                    p.style.height = '10%';
+                });
+            }
+        });
+
+        // TUN 开关状态文本微调
+        tunToggle.addEventListener('change', (e) => {
+            if (e.target.checked) {
+                tunDesc.innerText = "虚拟网卡已接管系统流量";
+                tunDesc.style.color = "var(--color-tun)";
+            } else {
+                tunDesc.innerText = "接管全局系统流量";
+                tunDesc.style.color = "var(--text-muted)";
+            }
+        });
+
+        // 胶囊按钮切换逻辑
+        const caps = document.querySelectorAll('.capsule-btn');
+        caps.forEach(c => {
+            c.addEventListener('click', () => {
+                caps.forEach(b => b.classList.remove('active'));
+                c.classList.add('active');
+            });
+        });
+    </script>
+</body>
+</html>

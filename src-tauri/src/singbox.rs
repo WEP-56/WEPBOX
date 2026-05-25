@@ -4,8 +4,9 @@ use std::sync::{
     Arc, Mutex as StdMutex,
 };
 use std::{
+    collections::HashSet,
     fs,
-    io::{Read, Seek, SeekFrom, Write},
+    io::{Cursor, Read, Seek, SeekFrom, Write},
     path::PathBuf,
     time::{SystemTime, UNIX_EPOCH},
 };
@@ -14,16 +15,21 @@ use std::{
 use std::os::windows::process::CommandExt;
 
 use anyhow::{bail, Context, Result};
+use serde::Deserialize;
 use tauri::{AppHandle, Manager};
 use tauri_plugin_shell::{
     process::{CommandChild, CommandEvent},
     ShellExt,
 };
 
-use crate::{config, system::reset_network_runtime_state};
+use crate::{config, models::SingboxReleaseInfo, system::reset_network_runtime_state};
 
 const MAX_LOG_SIZE_BYTES: u64 = 32 * 1024 * 1024;
 const KEEP_LOG_TAIL_BYTES: usize = 4 * 1024 * 1024;
+const SINGBOX_RELEASES_API: &str =
+    "https://api.github.com/repos/SagerNet/sing-box/releases?per_page=20";
+const SINGBOX_RELEASES_PAGE: &str = "https://github.com/SagerNet/sing-box/releases";
+const GITHUB_USER_AGENT: &str = "wepbox-singbox-client";
 
 pub struct SingboxManager {
     child: Option<CommandChild>,
@@ -226,7 +232,96 @@ pub fn primary_sidecar_path(app: &AppHandle) -> Result<PathBuf> {
 
 pub fn query_sidecar_version(app: &AppHandle) -> Result<String> {
     let path = primary_sidecar_path(app)?;
-    let mut command = StdCommand::new(&path);
+    query_binary_version(&path)
+}
+
+pub async fn list_singbox_releases() -> Result<Vec<SingboxReleaseInfo>> {
+    let mut items = match fetch_singbox_releases().await {
+        Ok(releases) => releases
+            .into_iter()
+            .filter(|release| !release.draft && !release.prerelease)
+            .filter_map(|release| release.into_release_info())
+            .collect::<Vec<_>>(),
+        Err(error) => {
+            eprintln!("[sing-box:update] GitHub API failed, falling back to releases page: {error}");
+            Vec::new()
+        }
+    };
+
+    if items.is_empty() {
+        items = fetch_singbox_releases_from_page().await?;
+    }
+
+    if items.is_empty() {
+        bail!("failed to find a Windows sing-box release asset");
+    }
+
+    Ok(items)
+}
+
+pub async fn install_singbox_release(app: &AppHandle, version: &str) -> Result<(PathBuf, String)> {
+    let normalized_version = normalize_release_version(version);
+    if normalized_version.is_empty() {
+        bail!("sing-box version is required");
+    }
+
+    let download_url = match find_release_download_url(&normalized_version).await {
+        Ok(url) => url,
+        Err(error) => {
+            eprintln!("[sing-box:update] GitHub API asset lookup failed, using deterministic release URL: {error}");
+            release_download_url(&normalized_version)
+        }
+    };
+
+    let bytes = download_release_asset(&download_url).await?;
+    let exe = extract_singbox_exe(&bytes)?;
+
+    cleanup_existing_sidecar(app)?;
+    let target = primary_sidecar_path(app)?;
+    let target_dir = target
+        .parent()
+        .map(std::path::Path::to_path_buf)
+        .context("failed to resolve sing-box sidecar directory")?;
+    fs::create_dir_all(&target_dir).context("failed to create sidecar directory")?;
+
+    let tmp = target.with_file_name(format!(
+        "{}.download",
+        target
+            .file_name()
+            .and_then(|name| name.to_str())
+            .unwrap_or("sing-box.exe")
+    ));
+    fs::write(&tmp, exe).context("failed to write downloaded sing-box binary")?;
+    let _ = query_binary_version(&tmp).context("downloaded sing-box binary is not runnable")?;
+
+    let backup = target.with_file_name(format!(
+        "{}.bak",
+        target
+            .file_name()
+            .and_then(|name| name.to_str())
+            .unwrap_or("sing-box.exe")
+    ));
+
+    if target.exists() {
+        let _ = fs::remove_file(&backup);
+        fs::copy(&target, &backup).context("failed to create sing-box backup")?;
+        fs::remove_file(&target).context("failed to remove old sing-box binary")?;
+    }
+
+    if let Err(error) = fs::rename(&tmp, &target) {
+        if backup.exists() {
+            let _ = fs::copy(&backup, &target);
+        }
+        let _ = fs::remove_file(&tmp);
+        return Err(error).context("failed to replace sing-box binary");
+    }
+
+    let installed_version = query_binary_version(&target)?;
+    Ok((target, installed_version))
+}
+
+fn query_binary_version(path: &std::path::Path) -> Result<String> {
+    let mut command = StdCommand::new(path);
     command.arg("version");
     #[cfg(target_os = "windows")]
     command.creation_flags(0x08000000);
@@ -247,11 +342,253 @@ pub fn query_sidecar_version(app: &AppHandle) -> Result<String> {
     }
 
     let stdout = String::from_utf8_lossy(&output.stdout);
-    let version = stdout.trim();
+    let version = format_singbox_version(&stdout);
     if version.is_empty() {
         bail!("sing-box version output is empty");
     }
-    Ok(version.to_owned())
+    Ok(version)
+}
+
+fn format_singbox_version(output: &str) -> String {
+    let trimmed = output.trim();
+    if trimmed.is_empty() {
+        return String::new();
+    }
+
+    let mut tokens = trimmed.split_whitespace();
+    while let Some(token) = tokens.next() {
+        if token.eq_ignore_ascii_case("version") {
+            if let Some(version) = tokens.next() {
+                return format!("version: {}", version.trim_start_matches('v'));
+            }
+        }
+    }
+
+    trimmed
+        .split_whitespace()
+        .find(|token| {
+            token
+                .trim_start_matches('v')
+                .chars()
+                .all(|c| c.is_ascii_digit() || c == '.')
+        })
+        .map(|version| format!("version: {}", version.trim_start_matches('v')))
+        .unwrap_or_else(|| trimmed.lines().next().unwrap_or_default().to_string())
+}
+
+async fn fetch_singbox_releases() -> Result<Vec<GitHubRelease>> {
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(25))
+        .user_agent(GITHUB_USER_AGENT)
+        .build()
+        .context("failed to create GitHub client")?;
+
+    let response = client
+        .get(SINGBOX_RELEASES_API)
+        .send()
+        .await
+        .context("failed to request sing-box releases from GitHub")?;
+
+    if !response.status().is_success() {
+        bail!("GitHub releases request failed: {}", response.status());
+    }
+
+    response
+        .json::<Vec<GitHubRelease>>()
+        .await
+        .context("failed to parse sing-box releases")
+}
+
+async fn fetch_singbox_releases_from_page() -> Result<Vec<SingboxReleaseInfo>> {
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(25))
+        .user_agent(GITHUB_USER_AGENT)
+        .build()
+        .context("failed to create GitHub page client")?;
+
+    let response = client
+        .get(SINGBOX_RELEASES_PAGE)
+        .send()
+        .await
+        .context("failed to request sing-box releases page")?;
+
+    if !response.status().is_success() {
+        bail!("GitHub releases page request failed: {}", response.status());
+    }
+
+    let html = response
+        .text()
+        .await
+        .context("failed to read sing-box releases page")?;
+    let mut versions = Vec::new();
+    let mut seen = HashSet::new();
+    let marker = "/SagerNet/sing-box/releases/tag/";
+    let mut rest = html.as_str();
+
+    while let Some(index) = rest.find(marker) {
+        let after = &rest[index + marker.len()..];
+        let tag = after
+            .split(|c| c == '"' || c == '\'' || c == '<' || c == '?' || c == '#')
+            .next()
+            .unwrap_or_default();
+        let version = normalize_release_version(tag);
+        if !version.is_empty()
+            && !version.contains("alpha")
+            && !version.contains("beta")
+            && !version.contains("rc")
+            && seen.insert(version.clone())
+        {
+            versions.push(version);
+            if versions.len() >= 20 {
+                break;
+            }
+        }
+        rest = after;
+    }
+
+    Ok(versions
+        .into_iter()
+        .map(|version| {
+            let tag_name = format!("v{version}");
+            SingboxReleaseInfo {
+                asset_name: release_asset_name(&version),
+                version,
+                tag_name,
+                published_at: None,
+                asset_size: None,
+            }
+        })
+        .collect())
+}
+
+async fn find_release_download_url(version: &str) -> Result<String> {
+    let releases = fetch_singbox_releases().await?;
+    releases
+        .into_iter()
+        .filter(|release| !release.draft && !release.prerelease)
+        .find(|release| {
+            normalize_release_version(&release.tag_name) == version
+                && release.assets.iter().any(|asset| target_asset_name(&asset.name))
+        })
+        .and_then(|release| {
+            release
+                .assets
+                .into_iter()
+                .find(|asset| target_asset_name(&asset.name))
+                .map(|asset| asset.browser_download_url)
+        })
+        .with_context(|| format!("sing-box release asset not found: {version}"))
+}
+
+async fn download_release_asset(url: &str) -> Result<Vec<u8>> {
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(180))
+        .user_agent(GITHUB_USER_AGENT)
+        .build()
+        .context("failed to create download client")?;
+
+    let response = client
+        .get(url)
+        .send()
+        .await
+        .with_context(|| format!("failed to download sing-box asset: {url}"))?;
+
+    if !response.status().is_success() {
+        bail!("sing-box asset download failed: {}", response.status());
+    }
+
+    Ok(response
+        .bytes()
+        .await
+        .context("failed to read sing-box download body")?
+        .to_vec())
+}
+
+fn extract_singbox_exe(bytes: &[u8]) -> Result<Vec<u8>> {
+    let reader = Cursor::new(bytes);
+    let mut archive = zip::ZipArchive::new(reader).context("failed to open sing-box zip asset")?;
+
+    for index in 0..archive.len() {
+        let mut file = archive
+            .by_index(index)
+            .context("failed to read sing-box zip entry")?;
+        let name = file.name().replace('\\', "/").to_ascii_lowercase();
+        if !file.is_dir() && (name == "sing-box.exe" || name.ends_with("/sing-box.exe")) {
+            let mut exe = Vec::with_capacity(file.size() as usize);
+            file.read_to_end(&mut exe)
+                .context("failed to extract sing-box.exe from zip")?;
+            if exe.len() < 1024 {
+                bail!("extracted sing-box.exe is too small");
+            }
+            return Ok(exe);
+        }
+    }
+
+    bail!("sing-box.exe was not found in the release zip")
+}
+
+fn normalize_release_version(version: &str) -> String {
+    version
+        .trim()
+        .trim_start_matches("sing-box")
+        .trim()
+        .trim_start_matches('v')
+        .to_ascii_lowercase()
+}
+
+fn target_asset_name(name: &str) -> bool {
+    let lower = name.to_ascii_lowercase();
+    lower.contains("windows") && lower.contains(target_asset_arch()) && lower.ends_with(".zip")
+}
+
+fn target_asset_arch() -> &'static str {
+    match std::env::consts::ARCH {
+        "x86_64" => "amd64",
+        "x86" => "386",
+        "aarch64" => "arm64",
+        _ => "amd64",
+    }
+}
+
+fn release_asset_name(version: &str) -> String {
+    format!("sing-box-{version}-windows-{}.zip", target_asset_arch())
+}
+
+fn release_download_url(version: &str) -> String {
+    let asset_name = release_asset_name(version);
+    format!("https://github.com/SagerNet/sing-box/releases/download/v{version}/{asset_name}")
+}
+
+#[derive(Debug, Deserialize)]
+struct GitHubRelease {
+    tag_name: String,
+    prerelease: bool,
+    draft: bool,
+    published_at: Option<String>,
+    assets: Vec<GitHubAsset>,
+}
+
+impl GitHubRelease {
+    fn into_release_info(self) -> Option<SingboxReleaseInfo> {
+        let asset = self
+            .assets
+            .into_iter()
+            .find(|asset| target_asset_name(&asset.name))?;
+        Some(SingboxReleaseInfo {
+            version: normalize_release_version(&self.tag_name),
+            tag_name: self.tag_name,
+            published_at: self.published_at,
+            asset_name: asset.name,
+            asset_size: asset.size,
+        })
+    }
+}
+
+#[derive(Debug, Deserialize)]
+struct GitHubAsset {
+    name: String,
+    browser_download_url: String,
+    size: Option<u64>,
 }
 
 fn cap_singbox_log_file(app: &AppHandle) -> Result<()> {

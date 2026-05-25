@@ -18,7 +18,7 @@ use std::{
 use models::{
     AppSettings, AppStatus, ImportSubscriptionRequest, ImportSubscriptionResult,
     MaintenanceActionResult, MaintenanceInfo, ProxyList, SelectProxyRequest, SpeedTestResult,
-    SpeedTestSummary, SubscriptionRefreshSummary,
+    SingboxReleaseInfo, SpeedTestSummary, SubscriptionRefreshSummary,
 };
 use singbox::SingboxManager;
 use system::{
@@ -80,6 +80,46 @@ async fn maintenance_info(app: AppHandle) -> Result<MaintenanceInfo, String> {
         sidecar_path,
         sidecar_version,
     })
+}
+
+#[tauri::command]
+async fn list_singbox_releases() -> Result<Vec<SingboxReleaseInfo>, String> {
+    singbox::list_singbox_releases().await.map_err(to_err)
+}
+
+#[tauri::command]
+async fn install_singbox_release(
+    app: AppHandle,
+    state: State<'_, SharedState>,
+    version: String,
+) -> Result<MaintenanceActionResult, String> {
+    let shared_state = state.inner().clone();
+    let was_running = {
+        let core = shared_state.core.lock().await;
+        core.is_running()
+    };
+
+    if was_running {
+        stop_core_inner(app.clone(), shared_state.clone()).await?;
+    }
+
+    match singbox::install_singbox_release(&app, &version).await {
+        Ok((path, installed_version)) => {
+            if was_running {
+                start_core_inner(app.clone(), shared_state).await?;
+            }
+            Ok(MaintenanceActionResult {
+                message: format!("sing-box 内核已切换到 {installed_version}"),
+                path: Some(path.display().to_string()),
+            })
+        }
+        Err(error) => {
+            if was_running {
+                let _ = start_core_inner(app.clone(), shared_state).await;
+            }
+            Err(to_err(error))
+        }
+    }
 }
 
 #[tauri::command]
@@ -936,6 +976,11 @@ fn normalize_settings_for_save(mut settings: AppSettings) -> AppSettings {
         .map(|value| value.trim().to_owned())
         .filter(|value| !value.is_empty());
 
+    settings.theme_color = match settings.theme_color.trim() {
+        "mint" | "blue" | "cyan" | "purple" | "orange" => settings.theme_color.trim().to_owned(),
+        _ => defaults.theme_color,
+    };
+
     settings
 }
 
@@ -1035,6 +1080,8 @@ fn main() {
             refresh_subscription,
             delete_subscription,
             maintenance_info,
+            list_singbox_releases,
+            install_singbox_release,
             open_app_data_dir,
             open_log_dir,
             open_settings_file,
