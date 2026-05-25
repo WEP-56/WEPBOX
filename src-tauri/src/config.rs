@@ -206,8 +206,7 @@ fn build_singbox_config(app: &AppHandle, settings: &AppSettings) -> Result<Value
         "tag": "mixed-in",
         "listen": mixed_listen,
         "listen_port": settings.local_mixed_port,
-        "set_system_proxy": !settings.tun_enabled,
-        "udp_fragment": settings.udp_acceleration_enabled
+        "set_system_proxy": !settings.tun_enabled
     })];
     if settings.tun_enabled {
         inbounds.push(build_tun_inbound(settings));
@@ -444,7 +443,6 @@ fn build_tun_inbound(settings: &AppSettings) -> Value {
         "strict_route": settings.tun_strict_route,
         "stack": "mixed",
         "mtu": settings.tun_mtu,
-        "udp_fragment": settings.udp_acceleration_enabled,
         "route_exclude_address": settings.tun_route_exclude_address
     })
 }
@@ -863,14 +861,14 @@ mod tests {
     }
 
     #[test]
-    fn udp_acceleration_adds_route_options_and_udp_fragment() {
+    fn udp_acceleration_adds_route_options() {
         let settings = AppSettings {
             tun_enabled: true,
             udp_acceleration_enabled: true,
             ..AppSettings::default()
         };
         let tun = build_tun_inbound(&settings);
-        assert_eq!(tun["udp_fragment"], true);
+        assert!(tun.get("udp_fragment").is_none());
 
         let rules = build_route_rules(&settings);
         let route_options = rules
