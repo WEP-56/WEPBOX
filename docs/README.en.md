@@ -126,7 +126,7 @@ Release outputs:
 ```text
 src-tauri/target/release/wepbox.exe
 src-tauri/target/release/sing-box.exe
-src-tauri/target/release/bundle/nsis/WEPBOX_0.1.0_x64-setup.exe
+src-tauri/target/release/bundle/nsis/WEPBOX_0.1.1_x64-setup.exe
 ```
 
 App and tray icon:

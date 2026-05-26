@@ -2,7 +2,7 @@
 
 WEPBOX 是一款基于 Tauri、Rust 和 `sing-box` 构建的 Windows 桌面代理客户端。
 
-当前目标是提供一个实用的日常测试版本：导入订阅、切换代理节点、运行 TUN 模式、驻留系统托盘，并提供本地故障排查和维护工具。
+只是一个gui美观，简单易懂的自用向singbox客户端~
 
 [English README](docs/README.en.md)
 
@@ -126,7 +126,7 @@ npm run build
 ```text
 src-tauri/target/release/wepbox.exe
 src-tauri/target/release/sing-box.exe
-src-tauri/target/release/bundle/nsis/WEPBOX_0.1.0_x64-setup.exe
+src-tauri/target/release/bundle/nsis/WEPBOX_0.1.1_x64-setup.exe
 ```
 
 应用和托盘图标：

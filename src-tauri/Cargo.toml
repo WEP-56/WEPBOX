@@ -1,6 +1,6 @@
 [package]
 name = "wepbox"
-version = "0.1.0"
+version = "0.1.1"
 description = "A minimal sing-box desktop client backend"
 authors = ["wepbox"]
 edition = "2021"
