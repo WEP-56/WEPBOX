@@ -1,6 +1,7 @@
 use std::{
     fs::{self, OpenOptions},
     io::Write,
+    net::IpAddr,
     path::PathBuf,
     time::{SystemTime, UNIX_EPOCH},
 };
@@ -22,6 +23,11 @@ const SPEED_TEST_CACHE_FILE: &str = "speed-test-cache.json";
 const TAG_PROXY: &str = "PROXY";
 const TAG_DIRECT: &str = "DIRECT";
 const TAG_BLOCK: &str = "BLOCK";
+const TAG_TELEGRAM: &str = "Telegram";
+const TAG_YOUTUBE: &str = "YouTube";
+const TAG_NETFLIX: &str = "Netflix";
+const TAG_OPENAI: &str = "OpenAI";
+const TAG_GOOGLE: &str = "Google";
 const DNS_DIRECT: &str = "dns_direct";
 const DNS_REMOTE: &str = "dns_remote";
 const DNS_RESOLVER: &str = "dns_resolver";
@@ -53,6 +59,27 @@ const PRIVATE_IP_CIDRS: &[&str] = &[
     "::1/128",
     "fc00::/7",
     "fe80::/10",
+];
+
+const LOCAL_DOMAIN_SUFFIXES: &[&str] = &[
+    "lan",
+    "local",
+    "localdomain",
+    "localhost",
+    "home.arpa",
+    "test",
+    "invalid",
+    "example",
+    "msftconnecttest.com",
+    "msftncsi.com",
+];
+
+const SERVICE_RULES: &[(&str, &str, &str)] = &[
+    (RS_GEOSITE_TELEGRAM, TAG_TELEGRAM, "Telegram"),
+    (RS_GEOSITE_YOUTUBE, TAG_YOUTUBE, "YouTube"),
+    (RS_GEOSITE_NETFLIX, TAG_NETFLIX, "Netflix"),
+    (RS_GEOSITE_OPENAI, TAG_OPENAI, "OpenAI"),
+    (RS_GEOSITE_GOOGLE, TAG_GOOGLE, "Google"),
 ];
 
 pub fn app_data_dir(app: &AppHandle) -> Result<PathBuf> {
@@ -190,13 +217,18 @@ fn build_singbox_config(app: &AppHandle, settings: &AppSettings) -> Result<Value
         selector_tags.push(TAG_DIRECT.to_owned());
     }
 
-    let mut outbounds = vec![
-        json!({
-            "type": "selector",
-            "tag": TAG_PROXY,
-            "outbounds": selector_tags,
-            "interrupt_exist_connections": true
-        }),
+    let mut outbounds = vec![proxy_selector_outbound(selector_tags)];
+    if settings.app_rules_enabled {
+        outbounds.extend(SERVICE_RULES.iter().map(|(_, tag, _)| {
+            json!({
+                "type": "selector",
+                "tag": tag,
+                "outbounds": [TAG_PROXY, TAG_DIRECT],
+                "interrupt_exist_connections": true
+            })
+        }));
+    }
+    outbounds.extend([
         json!({
             "type": "direct",
             "tag": TAG_DIRECT
@@ -205,7 +237,7 @@ fn build_singbox_config(app: &AppHandle, settings: &AppSettings) -> Result<Value
             "type": "block",
             "tag": TAG_BLOCK
         }),
-    ];
+    ]);
     outbounds.append(&mut imported_outbounds);
 
     let mut inbounds = vec![json!({
@@ -322,7 +354,7 @@ fn build_dns_rules(settings: &AppSettings) -> Vec<Value> {
     let mut rules = vec![
         json!({ "clash_mode": "direct", "server": DNS_DIRECT }),
         json!({ "clash_mode": "global", "server": DNS_REMOTE }),
-        json!({ "domain_suffix": ["lan", "local", "home.arpa"], "server": DNS_DIRECT }),
+        json!({ "domain_suffix": LOCAL_DOMAIN_SUFFIXES, "server": DNS_DIRECT }),
         json!({ "rule_set": RS_GEOSITE_PRIVATE, "server": DNS_DIRECT }),
         json!({ "rule_set": [RS_GEOSITE_CN, RS_GEOIP_CN], "server": DNS_DIRECT }),
         json!({ "rule_set": RS_GEOSITE_GEOLOCATION_NOT_CN, "server": DNS_REMOTE }),
@@ -379,6 +411,10 @@ fn build_route_rules(settings: &AppSettings) -> Vec<Value> {
         rules.push(json!({ "protocol": "dns", "action": "hijack-dns" }));
     }
 
+    if settings.tun_enabled {
+        rules.push(json!({ "protocol": "quic", "outbound": TAG_BLOCK }));
+    }
+
     rules.extend(settings.user_route_rules.iter().cloned());
 
     rules.extend([
@@ -391,18 +427,16 @@ fn build_route_rules(settings: &AppSettings) -> Vec<Value> {
     }
 
     if settings.app_rules_enabled {
-        rules.extend([
-            json!({ "rule_set": RS_GEOSITE_TELEGRAM, "outbound": TAG_PROXY }),
-            json!({ "rule_set": RS_GEOSITE_YOUTUBE, "outbound": TAG_PROXY }),
-            json!({ "rule_set": RS_GEOSITE_NETFLIX, "outbound": TAG_PROXY }),
-            json!({ "rule_set": RS_GEOSITE_OPENAI, "outbound": TAG_PROXY }),
-            json!({ "rule_set": RS_GEOSITE_GOOGLE, "outbound": TAG_PROXY }),
-        ]);
+        rules.extend(
+            SERVICE_RULES
+                .iter()
+                .map(|(rule_set, tag, _)| json!({ "rule_set": rule_set, "outbound": tag })),
+        );
     }
 
     rules.extend([
         json!({ "ip_cidr": PRIVATE_IP_CIDRS, "outbound": TAG_DIRECT }),
-        json!({ "domain_suffix": ["lan", "local", "home.arpa"], "outbound": TAG_DIRECT }),
+        json!({ "domain_suffix": LOCAL_DOMAIN_SUFFIXES, "outbound": TAG_DIRECT }),
         json!({ "rule_set": RS_GEOSITE_PRIVATE, "outbound": TAG_DIRECT }),
         json!({ "rule_set": [RS_GEOSITE_CN, RS_GEOIP_CN], "outbound": TAG_DIRECT }),
         json!({ "rule_set": RS_GEOSITE_GEOLOCATION_NOT_CN, "outbound": TAG_PROXY }),
@@ -420,12 +454,13 @@ fn build_route_rules(settings: &AppSettings) -> Vec<Value> {
 
 fn build_rule_sets_for_settings(settings: &AppSettings) -> Vec<Value> {
     let mut rule_sets = Vec::new();
+    let download_detour = rule_set_download_detour(settings);
 
     if settings.block_ads_enabled {
         rule_sets.push(remote_rule_set(
             RS_GEOSITE_ADS,
             "https://gh-proxy.com/https://raw.githubusercontent.com/SagerNet/sing-geosite/rule-set/geosite-category-ads-all.srs",
-            TAG_DIRECT,
+            download_detour,
             "1d",
         ));
     }
@@ -440,56 +475,32 @@ fn build_rule_sets_for_settings(settings: &AppSettings) -> Vec<Value> {
         remote_rule_set(
             RS_GEOSITE_CN,
             "https://gh-proxy.com/https://raw.githubusercontent.com/SagerNet/sing-geosite/rule-set/geosite-cn.srs",
-            TAG_DIRECT,
+            download_detour,
             "1d",
         ),
         remote_rule_set(
             RS_GEOSITE_GEOLOCATION_NOT_CN,
             "https://gh-proxy.com/https://raw.githubusercontent.com/SagerNet/sing-geosite/rule-set/geosite-geolocation-!cn.srs",
-            TAG_DIRECT,
+            download_detour,
             "1d",
         ),
         remote_rule_set(
             RS_GEOIP_CN,
             "https://gh-proxy.com/https://raw.githubusercontent.com/SagerNet/sing-geoip/rule-set/geoip-cn.srs",
-            TAG_DIRECT,
+            download_detour,
             "1d",
         ),
     ]);
 
     if settings.app_rules_enabled {
-        rule_sets.extend([
+        rule_sets.extend(SERVICE_RULES.iter().map(|(rule_set, _, _)| {
             remote_rule_set(
-                RS_GEOSITE_TELEGRAM,
-                "https://gh-proxy.com/https://raw.githubusercontent.com/SagerNet/sing-geosite/rule-set/geosite-telegram.srs",
-                TAG_DIRECT,
+                rule_set,
+                service_rule_set_url(rule_set),
+                download_detour,
                 "7d",
-            ),
-            remote_rule_set(
-                RS_GEOSITE_YOUTUBE,
-                "https://gh-proxy.com/https://raw.githubusercontent.com/SagerNet/sing-geosite/rule-set/geosite-youtube.srs",
-                TAG_DIRECT,
-                "7d",
-            ),
-            remote_rule_set(
-                RS_GEOSITE_NETFLIX,
-                "https://gh-proxy.com/https://raw.githubusercontent.com/SagerNet/sing-geosite/rule-set/geosite-netflix.srs",
-                TAG_DIRECT,
-                "7d",
-            ),
-            remote_rule_set(
-                RS_GEOSITE_OPENAI,
-                "https://gh-proxy.com/https://raw.githubusercontent.com/SagerNet/sing-geosite/rule-set/geosite-openai.srs",
-                TAG_DIRECT,
-                "7d",
-            ),
-            remote_rule_set(
-                RS_GEOSITE_GOOGLE,
-                "https://gh-proxy.com/https://raw.githubusercontent.com/SagerNet/sing-geosite/rule-set/geosite-google.srs",
-                TAG_DIRECT,
-                "7d",
-            ),
-        ]);
+            )
+        }));
     }
 
     rule_sets
@@ -506,6 +517,47 @@ fn remote_rule_set(tag: &str, url: &str, download_detour: &str, update_interval:
     })
 }
 
+fn proxy_selector_outbound(outbounds: Vec<String>) -> Value {
+    json!({
+        "type": "selector",
+        "tag": TAG_PROXY,
+        "outbounds": outbounds,
+        "interrupt_exist_connections": true
+    })
+}
+
+fn rule_set_download_detour(settings: &AppSettings) -> &'static str {
+    match settings.mode {
+        ProxyMode::Direct => TAG_DIRECT,
+        ProxyMode::Global => TAG_PROXY,
+        ProxyMode::Rule => match settings.fallback {
+            FallbackPolicy::Proxy => TAG_PROXY,
+            FallbackPolicy::Direct => TAG_DIRECT,
+        },
+    }
+}
+
+fn service_rule_set_url(rule_set: &str) -> &'static str {
+    match rule_set {
+        RS_GEOSITE_TELEGRAM => {
+            "https://gh-proxy.com/https://raw.githubusercontent.com/SagerNet/sing-geosite/rule-set/geosite-telegram.srs"
+        }
+        RS_GEOSITE_YOUTUBE => {
+            "https://gh-proxy.com/https://raw.githubusercontent.com/SagerNet/sing-geosite/rule-set/geosite-youtube.srs"
+        }
+        RS_GEOSITE_NETFLIX => {
+            "https://gh-proxy.com/https://raw.githubusercontent.com/SagerNet/sing-geosite/rule-set/geosite-netflix.srs"
+        }
+        RS_GEOSITE_OPENAI => {
+            "https://gh-proxy.com/https://raw.githubusercontent.com/SagerNet/sing-geosite/rule-set/geosite-openai.srs"
+        }
+        RS_GEOSITE_GOOGLE => {
+            "https://gh-proxy.com/https://raw.githubusercontent.com/SagerNet/sing-geosite/rule-set/geosite-google.srs"
+        }
+        _ => "https://gh-proxy.com/https://raw.githubusercontent.com/SagerNet/sing-geosite/rule-set/geosite-geolocation-!cn.srs",
+    }
+}
+
 fn build_tun_inbound(settings: &AppSettings) -> Value {
     let mut addresses = vec![DEFAULT_TUN_IPV4.to_owned()];
     if settings.ipv6_enabled {
@@ -515,14 +567,80 @@ fn build_tun_inbound(settings: &AppSettings) -> Value {
     json!({
         "type": "tun",
         "tag": "tun-in",
-        "interface_name": settings.tun_interface_name,
+        "interface_name": normalized_tun_interface_name(settings),
         "address": addresses,
         "auto_route": settings.tun_auto_route,
         "strict_route": settings.tun_strict_route,
         "stack": "mixed",
-        "mtu": settings.tun_mtu,
-        "route_exclude_address": settings.tun_route_exclude_address
+        "mtu": normalized_tun_mtu(settings.tun_mtu),
+        "route_exclude_address": normalized_tun_route_exclude_address(settings)
     })
+}
+
+fn normalized_tun_interface_name(settings: &AppSettings) -> String {
+    let trimmed = settings.tun_interface_name.trim();
+    if trimmed.is_empty() {
+        "singbox_tun".to_owned()
+    } else {
+        trimmed.to_owned()
+    }
+}
+
+fn normalized_tun_mtu(mtu: u16) -> u16 {
+    mtu.clamp(576, 9000)
+}
+
+fn normalized_tun_route_exclude_address(settings: &AppSettings) -> Vec<String> {
+    let mut normalized = Vec::new();
+    for cidr in &settings.tun_route_exclude_address {
+        let trimmed = cidr.trim();
+        if trimmed.is_empty() || !is_valid_cidr(trimmed) {
+            continue;
+        }
+        if !normalized.iter().any(|item| item == trimmed) {
+            normalized.push(trimmed.to_owned());
+        }
+    }
+
+    if normalized.is_empty() {
+        PRIVATE_IP_CIDRS
+            .iter()
+            .map(|cidr| (*cidr).to_owned())
+            .collect()
+    } else {
+        normalized
+    }
+}
+
+fn is_valid_cidr(value: &str) -> bool {
+    let Some((address, prefix)) = value.split_once('/') else {
+        return false;
+    };
+    let Ok(ip) = address.parse::<IpAddr>() else {
+        return false;
+    };
+    let Ok(prefix) = prefix.parse::<u8>() else {
+        return false;
+    };
+    let max_prefix = match ip {
+        IpAddr::V4(_) => 32,
+        IpAddr::V6(_) => 128,
+    };
+    prefix <= max_prefix
+}
+
+fn is_domain_name(value: &str) -> bool {
+    let trimmed = value.trim();
+    !trimmed.is_empty() && trimmed.parse::<IpAddr>().is_err()
+}
+
+fn should_include_outbound_in_selector(outbound: &Value) -> bool {
+    let server = outbound
+        .get("server")
+        .and_then(Value::as_str)
+        .unwrap_or_default()
+        .trim();
+    !server.is_empty() && server != "0.0.0.0"
 }
 
 fn build_dns_server(
@@ -654,6 +772,7 @@ fn load_imported_outbounds(
     let dir = subscriptions_dir(app)?;
     let mut outbounds = Vec::new();
     let mut tags = Vec::new();
+    let mut seen_tags = Vec::new();
 
     for subscription in &settings.subscriptions {
         if !subscription.enabled {
@@ -674,19 +793,27 @@ fn load_imported_outbounds(
         let mut clean_items = Vec::with_capacity(items.len());
         let mut removed_items = false;
         for item in items {
-            let tag = item.get("tag").and_then(Value::as_str).unwrap_or_default();
+            let tag = item
+                .get("tag")
+                .and_then(Value::as_str)
+                .unwrap_or_default()
+                .to_owned();
             let outbound_type = item.get("type").and_then(Value::as_str).unwrap_or_default();
             if tag.is_empty()
-                || is_reserved_outbound(tag, outbound_type)
-                || is_informational_tag(tag)
+                || is_reserved_outbound(&tag, outbound_type)
+                || is_informational_tag(&tag)
             {
                 removed_items = true;
                 continue;
             }
             clean_items.push(item.clone());
-            if !tags.iter().any(|existing| existing == tag) {
-                tags.push(tag.to_owned());
-                outbounds.push(normalize_imported_outbound(item, settings));
+            if !seen_tags.iter().any(|existing| existing == &tag) {
+                seen_tags.push(tag.clone());
+                let normalized = normalize_imported_outbound(item, settings);
+                if should_include_outbound_in_selector(&normalized) {
+                    tags.push(tag);
+                }
+                outbounds.push(normalized);
             }
         }
 
@@ -711,6 +838,18 @@ fn normalize_imported_outbound(mut outbound: Value, settings: &AppSettings) -> V
 
     if settings.experimental_quic {
         apply_quic_tuning(&mut outbound);
+    }
+
+    if outbound.get("domain_resolver").is_none()
+        && outbound
+            .get("server")
+            .and_then(Value::as_str)
+            .is_some_and(is_domain_name)
+    {
+        outbound["domain_resolver"] = json!({
+            "server": DNS_RESOLVER,
+            "strategy": if settings.ipv6_enabled { "prefer_ipv6" } else { "ipv4_only" }
+        });
     }
 
     let uses_reality = outbound
@@ -775,7 +914,17 @@ fn normalize_flow_value(flow: &str) -> String {
 fn is_reserved_outbound(tag: &str, outbound_type: &str) -> bool {
     matches!(
         tag,
-        TAG_DIRECT | TAG_PROXY | "GLOBAL" | "REJECT" | "dns-out" | TAG_BLOCK
+        TAG_DIRECT
+            | TAG_PROXY
+            | TAG_TELEGRAM
+            | TAG_YOUTUBE
+            | TAG_NETFLIX
+            | TAG_OPENAI
+            | TAG_GOOGLE
+            | "GLOBAL"
+            | "REJECT"
+            | "dns-out"
+            | TAG_BLOCK
     ) || matches!(outbound_type, "direct" | "block" | "dns")
 }
 
@@ -817,7 +966,17 @@ fn migrate_rule_defaults(settings: &mut AppSettings) -> bool {
 fn is_reserved_subscription_tag(tag: &str) -> bool {
     matches!(
         tag.trim(),
-        TAG_DIRECT | TAG_PROXY | "GLOBAL" | "REJECT" | "dns-out" | TAG_BLOCK
+        TAG_DIRECT
+            | TAG_PROXY
+            | TAG_TELEGRAM
+            | TAG_YOUTUBE
+            | TAG_NETFLIX
+            | TAG_OPENAI
+            | TAG_GOOGLE
+            | "GLOBAL"
+            | "REJECT"
+            | "dns-out"
+            | TAG_BLOCK
     )
 }
 
@@ -873,10 +1032,11 @@ fn is_informational_tag_clean(tag: &str) -> bool {
 mod tests {
     use super::{
         build_dns_rules, build_dns_server, build_route_rules, build_rule_sets_for_settings,
-        build_tun_inbound, normalize_imported_outbound, DNS_FAKEIP, DNS_RESOLVER,
-        QUIC_INITIAL_PACKET_SIZE, TAG_DIRECT, UDP_CONNECT_TIMEOUT,
+        build_tun_inbound, normalize_imported_outbound, rule_set_download_detour,
+        should_include_outbound_in_selector, DNS_FAKEIP, DNS_RESOLVER, LOCAL_DOMAIN_SUFFIXES,
+        QUIC_INITIAL_PACKET_SIZE, TAG_DIRECT, TAG_GOOGLE, TAG_PROXY, UDP_CONNECT_TIMEOUT,
     };
-    use crate::models::{AppSettings, ProxyMode};
+    use crate::models::{AppSettings, FallbackPolicy, ProxyMode};
 
     #[test]
     fn tun_inbound_contains_ipv6_when_enabled() {
@@ -888,6 +1048,30 @@ mod tests {
         let tun = build_tun_inbound(&settings);
         let addresses = tun["address"].as_array().expect("tun addresses");
         assert_eq!(addresses.len(), 2);
+    }
+
+    #[test]
+    fn tun_inbound_normalizes_interface_mtu_and_route_excludes() {
+        let settings = AppSettings {
+            tun_enabled: true,
+            tun_interface_name: "  ".to_owned(),
+            tun_mtu: 200,
+            tun_route_exclude_address: vec![
+                " 10.0.0.0/8 ".to_owned(),
+                "bad-cidr".to_owned(),
+                "10.0.0.0/8".to_owned(),
+                "192.168.0.0/16".to_owned(),
+            ],
+            ..AppSettings::default()
+        };
+        let tun = build_tun_inbound(&settings);
+
+        assert_eq!(tun["interface_name"], "singbox_tun");
+        assert_eq!(tun["mtu"], 576);
+        assert_eq!(
+            tun["route_exclude_address"],
+            serde_json::json!(["10.0.0.0/8", "192.168.0.0/16"])
+        );
     }
 
     #[test]
@@ -972,6 +1156,20 @@ mod tests {
     }
 
     #[test]
+    fn tun_mode_blocks_quic_to_avoid_udp_stalls() {
+        let settings = AppSettings {
+            tun_enabled: true,
+            ..AppSettings::default()
+        };
+        let rules = build_route_rules(&settings);
+
+        assert!(rules.iter().any(|rule| {
+            rule.get("protocol").and_then(serde_json::Value::as_str) == Some("quic")
+                && rule.get("outbound").and_then(serde_json::Value::as_str) == Some("BLOCK")
+        }));
+    }
+
+    #[test]
     fn experimental_quic_adds_quic_fields_to_dns_servers() {
         let server = build_dns_server(
             "dns_remote",
@@ -1007,6 +1205,34 @@ mod tests {
     }
 
     #[test]
+    fn domain_outbounds_get_direct_domain_resolver() {
+        let outbound = serde_json::json!({
+            "type": "vless",
+            "tag": "node-a",
+            "server": "proxy.example.com",
+            "server_port": 443
+        });
+        let tuned = normalize_imported_outbound(outbound, &AppSettings::default());
+
+        assert_eq!(tuned["domain_resolver"]["server"], DNS_RESOLVER);
+        assert_eq!(tuned["domain_resolver"]["strategy"], "ipv4_only");
+    }
+
+    #[test]
+    fn placeholder_outbounds_do_not_enter_proxy_selector() {
+        assert!(!should_include_outbound_in_selector(&serde_json::json!({
+            "type": "vless",
+            "tag": "notice",
+            "server": "0.0.0.0"
+        })));
+        assert!(should_include_outbound_in_selector(&serde_json::json!({
+            "type": "vless",
+            "tag": "real",
+            "server": "proxy.example.com"
+        })));
+    }
+
+    #[test]
     fn tun_rule_mode_inserts_fakeip_dns_rule_for_non_cn_queries() {
         let settings = AppSettings {
             tun_enabled: true,
@@ -1017,6 +1243,38 @@ mod tests {
         assert!(rules.iter().any(|rule| {
             rule.get("server").and_then(serde_json::Value::as_str) == Some(DNS_FAKEIP)
         }));
+    }
+
+    #[test]
+    fn local_domains_stay_direct_before_fakeip_dns_rules() {
+        let settings = AppSettings {
+            tun_enabled: true,
+            mode: ProxyMode::Rule,
+            ..AppSettings::default()
+        };
+        let rules = build_dns_rules(&settings);
+        let local_idx = rules
+            .iter()
+            .position(|rule| {
+                rule.get("domain_suffix")
+                    .and_then(serde_json::Value::as_array)
+                    .is_some_and(|suffixes| {
+                        suffixes
+                            .iter()
+                            .any(|value| value.as_str() == Some("msftconnecttest.com"))
+                    })
+                    && rule.get("server").and_then(serde_json::Value::as_str) == Some("dns_direct")
+            })
+            .expect("local domain direct dns rule");
+        let fakeip_idx = rules
+            .iter()
+            .position(|rule| {
+                rule.get("server").and_then(serde_json::Value::as_str) == Some(DNS_FAKEIP)
+            })
+            .expect("fakeip dns rule");
+
+        assert_eq!(LOCAL_DOMAIN_SUFFIXES[0], "lan");
+        assert!(local_idx < fakeip_idx);
     }
 
     #[test]
@@ -1150,6 +1408,7 @@ mod tests {
         let enabled_rules = build_route_rules(&enabled);
         assert!(enabled_rules.iter().any(|rule| {
             rule.get("rule_set").and_then(serde_json::Value::as_str) == Some("geosite-google")
+                && rule.get("outbound").and_then(serde_json::Value::as_str) == Some(TAG_GOOGLE)
         }));
         assert!(build_rule_sets_for_settings(&enabled)
             .iter()
@@ -1166,6 +1425,23 @@ mod tests {
             .any(|rule_set| {
                 rule_set.get("tag").and_then(serde_json::Value::as_str) == Some("geosite-google")
             }));
+    }
+
+    #[test]
+    fn rule_set_download_detour_follows_current_fallback() {
+        let proxy_fallback = AppSettings {
+            mode: ProxyMode::Rule,
+            fallback: FallbackPolicy::Proxy,
+            ..AppSettings::default()
+        };
+        let direct_fallback = AppSettings {
+            mode: ProxyMode::Rule,
+            fallback: FallbackPolicy::Direct,
+            ..AppSettings::default()
+        };
+
+        assert_eq!(rule_set_download_detour(&proxy_fallback), TAG_PROXY);
+        assert_eq!(rule_set_download_detour(&direct_fallback), TAG_DIRECT);
     }
 
     #[test]

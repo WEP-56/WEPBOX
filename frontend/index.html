@@ -504,7 +504,7 @@
                 <i class="ti ti-apps ri"></i>
                 <div>
                   <div class="rn">增强应用规则集</div>
-                  <div class="rs">启用 Google / Telegram / YouTube / Netflix / OpenAI 等常用服务规则集，优先走代理。</div>
+                  <div class="rs">启用 Google / Telegram / YouTube / Netflix / OpenAI 等常用服务规则集，并生成独立 selector 分流组。</div>
                 </div>
               </div>
               <div class="setting-actions">
@@ -532,16 +532,32 @@
                 </div>
               </div>
               <div class="ruleset-grid">
-                <span>geosite-private</span>
-                <span>geosite-cn</span>
-                <span>geoip-cn</span>
-                <span>geosite-geolocation-!cn</span>
-                <span>geosite-google</span>
-                <span>geosite-telegram</span>
-                <span>geosite-youtube</span>
-                <span>geosite-netflix</span>
-                <span>geosite-openai</span>
-                <span>geosite-category-ads-all</span>
+                <span><b>DIRECT</b> geosite-private</span>
+                <span><b>DIRECT</b> geosite-cn</span>
+                <span><b>DIRECT</b> geoip-cn</span>
+                <span><b>PROXY</b> geosite-geolocation-!cn</span>
+                <span><b>Google</b> geosite-google</span>
+                <span><b>Telegram</b> geosite-telegram</span>
+                <span><b>YouTube</b> geosite-youtube</span>
+                <span><b>Netflix</b> geosite-netflix</span>
+                <span><b>OpenAI</b> geosite-openai</span>
+                <span><b>BLOCK</b> geosite-category-ads-all</span>
+              </div>
+            </div>
+            <div class="row row-stack">
+              <div class="row-l">
+                <i class="ti ti-route ri"></i>
+                <div>
+                  <div class="rn">TUN / FakeIP 规则保护</div>
+                  <div class="rs">参考成熟客户端的实战策略，减少规则模式下 DNS 冷启动、FakeIP 误伤和 UDP 卡顿。</div>
+                </div>
+              </div>
+              <div class="rule-pipeline-grid">
+                <span><b>DNS</b> 本地域名与 Windows 连通性检测域名直连解析</span>
+                <span><b>FakeIP</b> 仅 TUN + Fake DNS 开启时写入，规则模式优先覆盖非 CN 域名</span>
+                <span><b>Route</b> TUN 下阻断 QUIC，让浏览器回落 TCP</span>
+                <span><b>Node</b> 订阅节点域名使用直连 resolver，避免代理 DNS 冷启动依赖</span>
+                <span><b>Download</b> 规则集下载 detour 跟随当前 fallback 策略</span>
               </div>
             </div>
             <div class="row" style="align-items:flex-start">

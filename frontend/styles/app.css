@@ -1896,6 +1896,7 @@ button {
 :root.light-theme .ipcheck-target-input,
 :root.light-theme .ipcheck-target-actions button,
 :root.light-theme .ruleset-grid span,
+:root.light-theme .rule-pipeline-grid span,
 :root.light-theme .settings-mode-btn,
 :root.light-theme .ghost-mini {
   background: rgba(255, 255, 255, 0.76);
@@ -1914,14 +1915,20 @@ button {
   font-family: ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", monospace;
 }
 
-.ruleset-grid {
+.ruleset-grid,
+.rule-pipeline-grid {
   width: 100%;
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
   gap: 8px;
 }
 
-.ruleset-grid span {
+.rule-pipeline-grid {
+  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+}
+
+.ruleset-grid span,
+.rule-pipeline-grid span {
   min-width: 0;
   padding: 8px 10px;
   border-radius: 10px;
@@ -1931,6 +1938,17 @@ button {
   font-family: ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", monospace;
   font-size: 11px;
   overflow-wrap: anywhere;
+}
+
+.ruleset-grid b,
+.rule-pipeline-grid b {
+  color: var(--color-active);
+  font-weight: 800;
+  margin-right: 6px;
+}
+
+.rule-pipeline-grid span {
+  line-height: 1.55;
 }
 
 .settings-kernel-updater {
