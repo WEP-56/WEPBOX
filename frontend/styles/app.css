@@ -2102,9 +2102,9 @@ button {
   line-height: 1.5;
 }
 
+.modal-input,
 .modal textarea {
   width: 100%;
-  min-height: 132px;
   margin-top: 18px;
   background: rgba(255, 255, 255, 0.03);
   border: 1px solid var(--border-strong);
@@ -2112,6 +2112,15 @@ button {
   padding: 12px;
   color: var(--text-main);
   outline: none;
+}
+
+.modal-input {
+  height: 40px;
+}
+
+.modal textarea {
+  min-height: 132px;
+  margin-top: 10px;
   resize: vertical;
 }
 

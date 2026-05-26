@@ -1,5 +1,5 @@
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     fs,
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
@@ -189,6 +189,27 @@ pub fn delete_subscription(app: &AppHandle, id: &str) -> Result<()> {
     Ok(())
 }
 
+pub fn rename_subscription(app: &AppHandle, id: &str, name: &str) -> Result<SubscriptionInfo> {
+    let mut settings = config::load_or_create_settings(app)?;
+    let name = name.trim();
+    if name.is_empty() {
+        bail!("subscription name cannot be empty");
+    }
+
+    let Some(subscription) = settings
+        .subscriptions
+        .iter_mut()
+        .find(|subscription| subscription.id == id)
+    else {
+        bail!("subscription not found: {id}");
+    };
+
+    subscription.name = name.to_owned();
+    let updated = subscription.clone();
+    config::save_settings(app, &settings)?;
+    Ok(updated)
+}
+
 pub fn clear_subscription_cache(app: &AppHandle) -> Result<usize> {
     let mut settings = config::load_or_create_settings(app)?;
     let removed = settings.subscriptions.len();
@@ -301,12 +322,17 @@ async fn fetch_converted(converter_url: &str, source_url: &str) -> Result<String
 }
 
 fn collect_importable_tags(outbounds: &[Value]) -> Vec<String> {
+    let mut seen = HashSet::new();
     outbounds
         .iter()
         .filter_map(|outbound| {
-            let tag = outbound.get("tag")?.as_str()?;
-            let outbound_type = outbound.get("type")?.as_str()?;
-            if is_reserved_outbound(tag, outbound_type) || is_informational_tag(tag) {
+            let tag = outbound.get("tag")?.as_str()?.trim();
+            let outbound_type = outbound.get("type")?.as_str()?.trim();
+            if is_reserved_outbound(tag, outbound_type)
+                || is_informational_tag(tag)
+                || !is_importable_outbound(outbound, tag, outbound_type)
+                || !seen.insert(tag.to_owned())
+            {
                 None
             } else {
                 Some(tag.to_owned())
@@ -320,18 +346,30 @@ fn sanitize_converted_subscription(value: &mut Value) {
         return;
     };
 
-    outbounds.retain(|outbound| {
+    let mut sanitized = Vec::with_capacity(outbounds.len());
+    let mut seen_tags = HashMap::<String, usize>::new();
+    for mut outbound in std::mem::take(outbounds) {
+        normalize_outbound_strings(&mut outbound);
         let tag = outbound
             .get("tag")
             .and_then(Value::as_str)
-            .unwrap_or_default();
+            .unwrap_or_default()
+            .trim();
         let outbound_type = outbound
             .get("type")
             .and_then(Value::as_str)
-            .unwrap_or_default();
+            .unwrap_or_default()
+            .trim();
 
-        !tag.is_empty() && !is_reserved_outbound(tag, outbound_type) && !is_informational_tag(tag)
-    });
+        if !is_importable_outbound(&outbound, tag, outbound_type) {
+            continue;
+        }
+
+        let unique_tag = unique_tag(tag, &mut seen_tags);
+        outbound["tag"] = unique_tag.into();
+        sanitized.push(outbound);
+    }
+    *outbounds = sanitized;
 }
 
 fn parse_clash_yaml(text: &str) -> Result<Value> {
@@ -405,6 +443,39 @@ fn clash_proxy_to_singbox(proxy: &serde_yaml::Value) -> Option<Value> {
             ("server_port", server_port.into()),
             ("password", yaml_str(proxy, "password")?.into()),
         ]),
+        "hysteria2" | "hy2" => {
+            let mut item = json_obj([
+                ("type", "hysteria2".into()),
+                ("tag", tag.into()),
+                ("server", server.into()),
+                ("server_port", server_port.into()),
+                ("password", yaml_str(proxy, "password")?.into()),
+            ]);
+            apply_clash_hysteria2_obfs(proxy, &mut item);
+            item
+        }
+        "tuic" => {
+            let mut item = json_obj([
+                ("type", "tuic".into()),
+                ("tag", tag.into()),
+                ("server", server.into()),
+                ("server_port", server_port.into()),
+                ("uuid", yaml_str(proxy, "uuid")?.into()),
+                ("password", yaml_str(proxy, "password")?.into()),
+            ]);
+            if let Some(value) = yaml_str(proxy, "congestion-controller")
+                .or_else(|| yaml_str(proxy, "congestion_control"))
+                .or_else(|| yaml_str(proxy, "congestion-control"))
+            {
+                item["congestion_control"] = value.into();
+            }
+            if let Some(value) =
+                yaml_str(proxy, "udp-relay-mode").or_else(|| yaml_str(proxy, "udp_relay_mode"))
+            {
+                item["udp_relay_mode"] = value.into();
+            }
+            item
+        }
         _ => return None,
     };
 
@@ -418,7 +489,11 @@ fn apply_clash_tls(proxy: &serde_yaml::Value, outbound: &mut Value) {
         || yaml_bool(proxy, "reality-opts").unwrap_or(false)
         || yaml_str(proxy, "security")
             .map(|value| matches!(value, "tls" | "reality"))
-            .unwrap_or(false);
+            .unwrap_or(false)
+        || matches!(
+            outbound.get("type").and_then(Value::as_str),
+            Some("hysteria2" | "tuic")
+        );
     if !tls_enabled {
         return;
     }
@@ -466,6 +541,21 @@ fn apply_clash_tls(proxy: &serde_yaml::Value, outbound: &mut Value) {
                 .is_some(),
     );
     outbound["tls"] = Value::Object(tls);
+}
+
+fn apply_clash_hysteria2_obfs(proxy: &serde_yaml::Value, outbound: &mut Value) {
+    let obfs_type = yaml_str(proxy, "obfs")
+        .or_else(|| yaml_str(proxy, "obfs-type"))
+        .unwrap_or_default();
+    let obfs_password = yaml_str(proxy, "obfs-password")
+        .or_else(|| yaml_str(proxy, "obfs_password"))
+        .unwrap_or_default();
+    if !obfs_type.is_empty() || !obfs_password.is_empty() {
+        outbound["obfs"] = json!({
+            "type": if obfs_type.is_empty() { "salamander" } else { obfs_type },
+            "password": obfs_password
+        });
+    }
 }
 
 fn apply_clash_transport(proxy: &serde_yaml::Value, outbound: &mut Value) {
@@ -535,6 +625,10 @@ fn parse_proxy_uri(line: &str) -> Option<Value> {
         parse_standard_uri(line, "trojan")
     } else if line.starts_with("ss://") {
         parse_ss_uri(line)
+    } else if line.starts_with("hysteria2://") || line.starts_with("hy2://") {
+        parse_hysteria2_uri(line)
+    } else if line.starts_with("tuic://") {
+        parse_tuic_uri(line)
     } else {
         None
     }
@@ -684,6 +778,74 @@ fn parse_ss_uri(line: &str) -> Option<Value> {
     Some(outbound)
 }
 
+fn parse_hysteria2_uri(line: &str) -> Option<Value> {
+    let url = Url::parse(line).ok()?;
+    let query = query_map(&url);
+    let server = url.host_str()?.to_owned();
+    let tag = uri_fragment_tag(&url, "Hysteria2");
+    let mut outbound = json!({
+        "type": "hysteria2",
+        "tag": tag,
+        "server": server,
+        "server_port": url.port().unwrap_or(443),
+        "password": percent_decode(url.username())
+    });
+
+    if let Some(obfs_type) = query_get_any(&query, &["obfs", "obfs-type", "obfs_type"]) {
+        outbound["obfs"] = json!({
+            "type": if obfs_type.is_empty() { "salamander" } else { obfs_type },
+            "password": query_get_any(&query, &["obfs-password", "obfs_password", "obfsPassword"])
+                .unwrap_or_default()
+        });
+    } else if let Some(obfs_password) =
+        query_get_any(&query, &["obfs-password", "obfs_password", "obfsPassword"])
+    {
+        outbound["obfs"] = json!({
+            "type": "salamander",
+            "password": obfs_password
+        });
+    }
+
+    apply_hysteria_tuic_tls(&mut outbound, &query, &server);
+    Some(outbound)
+}
+
+fn parse_tuic_uri(line: &str) -> Option<Value> {
+    let url = Url::parse(line).ok()?;
+    let query = query_map(&url);
+    let server = url.host_str()?.to_owned();
+    let tag = uri_fragment_tag(&url, "TUIC");
+    let mut outbound = json!({
+        "type": "tuic",
+        "tag": tag,
+        "server": server,
+        "server_port": url.port().unwrap_or(443),
+        "uuid": percent_decode(url.username()),
+        "password": percent_decode(url.password().unwrap_or_default())
+    });
+
+    if let Some(value) = query_get_any(
+        &query,
+        &[
+            "congestion_control",
+            "congestion-controller",
+            "congestion-control",
+            "congestionControl",
+        ],
+    ) {
+        outbound["congestion_control"] = value.into();
+    }
+    if let Some(value) = query_get_any(
+        &query,
+        &["udp_relay_mode", "udp-relay-mode", "udpRelayMode"],
+    ) {
+        outbound["udp_relay_mode"] = value.into();
+    }
+
+    apply_hysteria_tuic_tls(&mut outbound, &query, &server);
+    Some(outbound)
+}
+
 fn apply_uri_tls(outbound: &mut Value, query: &HashMap<String, String>, server: &str) {
     let security = query
         .get("security")
@@ -714,6 +876,39 @@ fn apply_uri_tls(outbound: &mut Value, query: &HashMap<String, String>, server: 
         query.get("fp").map(String::as_str),
         security == "reality",
     );
+    outbound["tls"] = tls;
+}
+
+fn apply_hysteria_tuic_tls(outbound: &mut Value, query: &HashMap<String, String>, server: &str) {
+    let mut tls = json!({
+        "enabled": true,
+        "server_name": query_get_any(query, &["sni", "peer", "serverName", "servername"])
+            .unwrap_or(server)
+    });
+    if let Some(insecure) = query_get_any(
+        query,
+        &[
+            "insecure",
+            "allowInsecure",
+            "allow-insecure",
+            "skip-cert-verify",
+            "skip_cert_verify",
+        ],
+    )
+    .and_then(parse_boolish)
+    {
+        tls["insecure"] = insecure.into();
+    }
+    if let Some(alpn) = query_get_any(query, &["alpn"]) {
+        let values: Vec<&str> = alpn
+            .split(',')
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .collect();
+        if !values.is_empty() {
+            tls["alpn"] = values.into();
+        }
+    }
     outbound["tls"] = tls;
 }
 
@@ -825,12 +1020,48 @@ fn query_map(url: &Url) -> HashMap<String, String> {
     url.query_pairs().into_owned().collect()
 }
 
+fn query_get_any<'a>(query: &'a HashMap<String, String>, keys: &[&str]) -> Option<&'a str> {
+    keys.iter()
+        .find_map(|key| query.get(*key).map(String::as_str))
+        .filter(|value| !value.is_empty())
+}
+
+fn uri_fragment_tag(url: &Url, fallback: &str) -> String {
+    url.fragment()
+        .and_then(|value| urlencoding::decode(value).ok())
+        .map(|value| value.into_owned())
+        .filter(|value| !value.trim().is_empty())
+        .unwrap_or_else(|| fallback.to_owned())
+}
+
+fn percent_decode(value: &str) -> String {
+    urlencoding::decode(value)
+        .map(|value| value.into_owned())
+        .unwrap_or_else(|_| value.to_owned())
+}
+
+fn parse_boolish(value: &str) -> Option<bool> {
+    match value.trim().to_ascii_lowercase().as_str() {
+        "1" | "true" | "yes" | "y" | "on" => Some(true),
+        "0" | "false" | "no" | "n" | "off" => Some(false),
+        _ => None,
+    }
+}
+
 fn split_once(value: &str, needle: char) -> Option<(&str, &str)> {
     value.split_once(needle)
 }
 
 fn split_host_port(value: &str) -> Option<(&str, u16)> {
+    if let Some(rest) = value.strip_prefix('[') {
+        let (host, rest) = rest.split_once(']')?;
+        let port = rest.strip_prefix(':')?.parse().ok()?;
+        return Some((host, port));
+    }
     let (host, port) = value.rsplit_once(':')?;
+    if host.contains(':') {
+        return None;
+    }
     Some((host, port.parse().ok()?))
 }
 
@@ -873,6 +1104,75 @@ fn ensure_reality_utls_value(tls: &mut Value, fingerprint: Option<&str>, require
         "enabled": true,
         "fingerprint": fingerprint
     });
+}
+
+fn normalize_outbound_strings(outbound: &mut Value) {
+    let Some(object) = outbound.as_object_mut() else {
+        return;
+    };
+    for key in ["tag", "type", "server"] {
+        if let Some(value) = object
+            .get(key)
+            .and_then(Value::as_str)
+            .map(|value| value.trim().to_owned())
+        {
+            object.insert(key.to_owned(), value.into());
+        }
+    }
+}
+
+fn unique_tag(tag: &str, seen_tags: &mut HashMap<String, usize>) -> String {
+    let count = seen_tags.entry(tag.to_owned()).or_insert(0);
+    *count += 1;
+    if *count == 1 {
+        tag.to_owned()
+    } else {
+        format!("{tag} #{}", *count)
+    }
+}
+
+fn is_importable_outbound(outbound: &Value, tag: &str, outbound_type: &str) -> bool {
+    if tag.is_empty() || is_reserved_outbound(tag, outbound_type) || is_informational_tag(tag) {
+        return false;
+    }
+
+    let server = outbound
+        .get("server")
+        .and_then(Value::as_str)
+        .unwrap_or_default()
+        .trim();
+    if server.is_empty() || matches!(server, "0.0.0.0" | "::" | "[::]") {
+        return false;
+    }
+    if outbound_u16(outbound, "server_port").is_none() {
+        return false;
+    }
+
+    match outbound_type {
+        "shadowsocks" => {
+            has_non_empty_str(outbound, "method") && has_non_empty_str(outbound, "password")
+        }
+        "vmess" | "vless" => has_non_empty_str(outbound, "uuid"),
+        "trojan" | "hysteria2" => has_non_empty_str(outbound, "password"),
+        "tuic" => has_non_empty_str(outbound, "uuid") && has_non_empty_str(outbound, "password"),
+        _ => true,
+    }
+}
+
+fn has_non_empty_str(value: &Value, key: &str) -> bool {
+    value
+        .get(key)
+        .and_then(Value::as_str)
+        .map(|value| !value.trim().is_empty())
+        .unwrap_or(false)
+}
+
+fn outbound_u16(value: &Value, key: &str) -> Option<u16> {
+    value.get(key).and_then(|item| {
+        item.as_u64()
+            .and_then(|port| u16::try_from(port).ok())
+            .or_else(|| item.as_str().and_then(|port| port.parse::<u16>().ok()))
+    })
 }
 
 fn is_reserved_outbound(tag: &str, outbound_type: &str) -> bool {
@@ -1008,6 +1308,75 @@ mod tests {
     }
 
     #[test]
+    fn parses_clash_hysteria2_and_tuic_nodes() {
+        let text = r#"
+proxies:
+  - name: HY2-01
+    type: hysteria2
+    server: hy.example.com
+    port: 443
+    password: hy-pass
+    sni: edge.example.com
+    skip-cert-verify: true
+    obfs: salamander
+    obfs-password: obfs-pass
+  - name: TUIC-01
+    type: tuic
+    server: tuic.example.com
+    port: 443
+    uuid: 00000000-0000-0000-0000-000000000000
+    password: tuic-pass
+    sni: tuic-sni.example.com
+    congestion-controller: bbr
+    udp-relay-mode: native
+"#;
+
+        let value = parse_clash_yaml(text).expect("should parse clash yaml");
+        let outbounds = value["outbounds"].as_array().expect("outbounds");
+        assert_eq!(outbounds.len(), 2);
+        assert_eq!(outbounds[0]["type"], "hysteria2");
+        assert_eq!(outbounds[0]["tls"]["server_name"], "edge.example.com");
+        assert_eq!(outbounds[0]["tls"]["insecure"], true);
+        assert_eq!(outbounds[0]["obfs"]["password"], "obfs-pass");
+        assert_eq!(outbounds[1]["type"], "tuic");
+        assert_eq!(outbounds[1]["congestion_control"], "bbr");
+        assert_eq!(outbounds[1]["udp_relay_mode"], "native");
+    }
+
+    #[test]
+    fn parses_hysteria2_uri() {
+        let outbound = parse_proxy_uri(
+            "hy2://hy-pass@hy.example.com:443?sni=edge.example.com&insecure=1&obfs=salamander&obfs-password=obfs-pass#HY2-URI",
+        )
+        .expect("should parse hysteria2 uri");
+
+        assert_eq!(outbound["type"], "hysteria2");
+        assert_eq!(outbound["tag"], "HY2-URI");
+        assert_eq!(outbound["server"], "hy.example.com");
+        assert_eq!(outbound["password"], "hy-pass");
+        assert_eq!(outbound["tls"]["server_name"], "edge.example.com");
+        assert_eq!(outbound["tls"]["insecure"], true);
+        assert_eq!(outbound["obfs"]["type"], "salamander");
+        assert_eq!(outbound["obfs"]["password"], "obfs-pass");
+    }
+
+    #[test]
+    fn parses_tuic_uri() {
+        let outbound = parse_proxy_uri(
+            "tuic://00000000-0000-0000-0000-000000000000:tuic-pass@tuic.example.com:443?sni=tuic-sni.example.com&congestion_control=bbr&udp_relay_mode=native#TUIC-URI",
+        )
+        .expect("should parse tuic uri");
+
+        assert_eq!(outbound["type"], "tuic");
+        assert_eq!(outbound["tag"], "TUIC-URI");
+        assert_eq!(outbound["uuid"], "00000000-0000-0000-0000-000000000000");
+        assert_eq!(outbound["password"], "tuic-pass");
+        assert_eq!(outbound["tls"]["server_name"], "tuic-sni.example.com");
+        assert_eq!(outbound["congestion_control"], "bbr");
+        assert_eq!(outbound["udp_relay_mode"], "native");
+    }
+
+    #[test]
     fn sanitize_converted_subscription_removes_information_outbounds() {
         let mut value = json!({
             "outbounds": [
@@ -1022,5 +1391,25 @@ mod tests {
         let outbounds = value["outbounds"].as_array().expect("outbounds");
         assert_eq!(outbounds.len(), 1);
         assert_eq!(outbounds[0]["tag"], "HK-01");
+    }
+
+    #[test]
+    fn sanitize_converted_subscription_renames_duplicates_and_drops_bad_nodes() {
+        let mut value = json!({
+            "outbounds": [
+                { "type": "vless", "tag": " HK-01 ", "server": " example.com ", "server_port": 443, "uuid": "00000000-0000-0000-0000-000000000000" },
+                { "type": "vless", "tag": "HK-01", "server": "example.org", "server_port": "443", "uuid": "00000000-0000-0000-0000-000000000001" },
+                { "type": "vless", "tag": "placeholder", "server": "0.0.0.0", "server_port": 443, "uuid": "00000000-0000-0000-0000-000000000002" },
+                { "type": "vless", "tag": "missing-port", "server": "example.net", "uuid": "00000000-0000-0000-0000-000000000003" },
+                { "type": "selector", "tag": "not-a-node", "outbounds": ["HK-01"] }
+            ]
+        });
+
+        sanitize_converted_subscription(&mut value);
+        let outbounds = value["outbounds"].as_array().expect("outbounds");
+        assert_eq!(outbounds.len(), 2);
+        assert_eq!(outbounds[0]["tag"], "HK-01");
+        assert_eq!(outbounds[0]["server"], "example.com");
+        assert_eq!(outbounds[1]["tag"], "HK-01 #2");
     }
 }

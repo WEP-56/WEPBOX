@@ -23,6 +23,10 @@ pub struct AppSettings {
     pub auto_select_fastest: bool,
     pub auto_switch_on_failure: bool,
     pub speed_test_interval: SpeedTestInterval,
+    pub speed_test_url: String,
+    pub speed_test_timeout_ms: u64,
+    pub speed_test_concurrency: usize,
+    pub speed_test_samples: u8,
     pub dns_guard_enabled: bool,
     pub ipv6_enabled: bool,
     pub udp_acceleration_enabled: bool,
@@ -69,6 +73,10 @@ impl Default for AppSettings {
             auto_select_fastest: true,
             auto_switch_on_failure: true,
             speed_test_interval: SpeedTestInterval::Every1Hour,
+            speed_test_url: "https://connectivitycheck.gstatic.com/generate_204".to_owned(),
+            speed_test_timeout_ms: 8000,
+            speed_test_concurrency: 6,
+            speed_test_samples: 2,
             dns_guard_enabled: true,
             ipv6_enabled: false,
             udp_acceleration_enabled: true,
@@ -162,6 +170,13 @@ pub struct SelectProxyRequest {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct RenameSubscriptionRequest {
+    pub id: String,
+    pub name: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct SubscriptionInfo {
     pub id: String,
     pub name: String,
@@ -235,6 +250,12 @@ pub struct SpeedTestSummary {
     pub failed: usize,
     pub selected: Vec<AutoSelectedProxy>,
     pub results: Vec<SpeedTestResult>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SpeedTestNodesRequest {
+    pub names: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

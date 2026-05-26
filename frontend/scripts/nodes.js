@@ -369,17 +369,18 @@ async function testGroup(groupName){
   groupTestingState.add(groupName);
   renderProxyGroups();
 
-  for(const node of group.nodes){
-    try{
-      const delay = await invoke('delay_proxy', { name: node.name });
-      nodeDelayOverrides.set(node.name, delay);
-    }catch{
-      nodeDelayOverrides.delete(node.name);
-    }
+  try{
+    const results = await invoke('speed_test_nodes', {
+      request: { names: group.nodes.map(node => node.name) }
+    });
+    applySpeedTestResults(results || []);
+  }catch(err){
+    showToast(formatError(err));
+    appendLog('[ERROR] ' + formatError(err));
+  }finally{
+    groupTestingState.delete(groupName);
+    renderProxyGroups();
   }
-
-  groupTestingState.delete(groupName);
-  renderProxyGroups();
 }
 
 async function autoSelectBest(groupName){
@@ -407,13 +408,23 @@ async function testAll(){
 
   overallTesting = true;
   icon?.classList.add('ti-spin');
+  proxyGroupsState.forEach(group => groupTestingState.add(group.name));
+  renderProxyGroups();
 
-  for(const group of proxyGroupsState){
-    await testGroup(group.name);
+  try{
+    const names = proxyGroupsState.flatMap(group => group.nodes.map(node => node.name));
+    const results = await invoke('speed_test_nodes', { request: { names } });
+    applySpeedTestResults(results || []);
+    showToast(`测速完成：${(results || []).filter(item => Number.isFinite(item.delay)).length} / ${(results || []).length}`);
+  }catch(err){
+    showToast(formatError(err));
+    appendLog('[ERROR] ' + formatError(err));
+  }finally{
+    groupTestingState.clear();
+    overallTesting = false;
+    icon?.classList.remove('ti-spin');
+    renderProxyGroups();
   }
-
-  overallTesting = false;
-  icon?.classList.remove('ti-spin');
 }
 
 async function refreshProxies(){

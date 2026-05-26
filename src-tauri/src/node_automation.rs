@@ -1,19 +1,35 @@
 use std::{
-    collections::{BTreeMap, BTreeSet},
+    collections::{BTreeMap, BTreeSet, HashSet},
     fs,
     time::{SystemTime, UNIX_EPOCH},
 };
 
 use anyhow::{Context, Result};
+use futures_util::{stream, StreamExt};
 use serde_json::Value;
 use tauri::AppHandle;
+use url::Url;
 
 use crate::{
     clash_api, config,
-    models::{AutoSelectedProxy, SpeedTestInterval, SpeedTestResult, SpeedTestSummary},
+    models::{
+        AppSettings, AutoSelectedProxy, SpeedTestInterval, SpeedTestResult, SpeedTestSummary,
+    },
 };
 
 const FAIL_THRESHOLD_MS: u64 = 1500;
+const DEFAULT_DELAY_TEST_URL: &str = "https://connectivitycheck.gstatic.com/generate_204";
+const MAX_DELAY_TEST_TIMEOUT_MS: u64 = 30000;
+const MAX_DELAY_TEST_CONCURRENCY: usize = 16;
+const MAX_DELAY_TEST_SAMPLES: u8 = 5;
+
+#[derive(Debug, Clone)]
+struct DelayTestOptions {
+    test_url: String,
+    timeout_ms: u64,
+    concurrency: usize,
+    samples: u8,
+}
 
 pub async fn run_speed_test(
     app: &AppHandle,
@@ -37,29 +53,17 @@ pub async fn run_speed_test(
         }
     }
 
-    let tested_at = now_unix();
-    let mut results = Vec::new();
+    let results = measure_node_delays(
+        client.clone(),
+        node_names.into_iter().collect(),
+        speed_test_options(&settings),
+        now_unix(),
+    )
+    .await;
     let mut delay_map = BTreeMap::new();
-
-    for name in node_names {
-        match client.delay_proxy(&name).await {
-            Ok(delay) => {
-                delay_map.insert(name.clone(), delay);
-                results.push(SpeedTestResult {
-                    name,
-                    delay: Some(delay),
-                    tested_at,
-                    error: None,
-                });
-            }
-            Err(error) => {
-                results.push(SpeedTestResult {
-                    name,
-                    delay: None,
-                    tested_at,
-                    error: Some(error.to_string()),
-                });
-            }
+    for result in &results {
+        if let Some(delay) = result.delay {
+            delay_map.insert(result.name.clone(), delay);
         }
     }
 
@@ -138,6 +142,23 @@ pub async fn run_speed_test(
     })
 }
 
+pub async fn run_speed_test_for_nodes(
+    app: &AppHandle,
+    node_names: Vec<String>,
+) -> Result<Vec<SpeedTestResult>> {
+    let settings = config::load_or_create_settings(app)?;
+    let client = clash_api::Client::from_settings(&settings);
+    let results = measure_node_delays(
+        client,
+        node_names,
+        speed_test_options(&settings),
+        now_unix(),
+    )
+    .await;
+    merge_speed_test_cache(app, &results)?;
+    Ok(results)
+}
+
 pub fn load_speed_test_cache(app: &AppHandle) -> Result<Vec<SpeedTestResult>> {
     let path = config::speed_test_cache_path(app)?;
     if !path.exists() {
@@ -171,6 +192,120 @@ fn save_speed_test_cache(app: &AppHandle, results: &[SpeedTestResult]) -> Result
         serde_json::to_string_pretty(results).context("failed to serialize speed test cache")?;
     fs::write(&path, content)
         .with_context(|| format!("failed to write speed test cache {}", path.display()))
+}
+
+fn merge_speed_test_cache(app: &AppHandle, results: &[SpeedTestResult]) -> Result<()> {
+    let mut latest = load_speed_test_cache(app)?
+        .into_iter()
+        .map(|result| (result.name.clone(), result))
+        .collect::<BTreeMap<_, _>>();
+    for result in results {
+        latest.insert(result.name.clone(), result.clone());
+    }
+    let merged = latest.into_values().collect::<Vec<_>>();
+    save_speed_test_cache(app, &merged)
+}
+
+async fn measure_node_delays(
+    client: clash_api::Client,
+    node_names: Vec<String>,
+    options: DelayTestOptions,
+    tested_at: u64,
+) -> Vec<SpeedTestResult> {
+    let node_names = dedupe_node_names(node_names);
+    stream::iter(node_names.into_iter().map(|name| {
+        let client = client.clone();
+        let test_url = options.test_url.clone();
+        async move {
+            measure_proxy_delay(
+                client,
+                name,
+                test_url,
+                options.timeout_ms,
+                options.samples,
+                tested_at,
+            )
+            .await
+        }
+    }))
+    .buffer_unordered(options.concurrency)
+    .collect()
+    .await
+}
+
+async fn measure_proxy_delay(
+    client: clash_api::Client,
+    name: String,
+    test_url: String,
+    timeout_ms: u64,
+    samples: u8,
+    tested_at: u64,
+) -> SpeedTestResult {
+    let mut delays = Vec::new();
+    let mut last_error = None;
+    for _ in 0..samples.max(1) {
+        match client
+            .delay_proxy_with_options(&name, &test_url, timeout_ms)
+            .await
+        {
+            Ok(delay) => delays.push(delay),
+            Err(error) => last_error = Some(error.to_string()),
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(80)).await;
+    }
+
+    let delay = median_u64(delays);
+    let error = if delay.is_some() {
+        None
+    } else {
+        last_error.or_else(|| Some("no delay result".to_owned()))
+    };
+
+    SpeedTestResult {
+        name,
+        delay,
+        tested_at,
+        error,
+    }
+}
+
+fn dedupe_node_names(node_names: Vec<String>) -> Vec<String> {
+    let mut seen = HashSet::new();
+    node_names
+        .into_iter()
+        .map(|name| name.trim().to_owned())
+        .filter(|name| !name.is_empty() && seen.insert(name.clone()))
+        .collect()
+}
+
+fn median_u64(mut values: Vec<u64>) -> Option<u64> {
+    if values.is_empty() {
+        return None;
+    }
+    values.sort_unstable();
+    Some(values[values.len() / 2])
+}
+
+fn speed_test_options(settings: &AppSettings) -> DelayTestOptions {
+    DelayTestOptions {
+        test_url: normalize_test_url(&settings.speed_test_url),
+        timeout_ms: settings
+            .speed_test_timeout_ms
+            .clamp(1000, MAX_DELAY_TEST_TIMEOUT_MS),
+        concurrency: settings
+            .speed_test_concurrency
+            .clamp(1, MAX_DELAY_TEST_CONCURRENCY),
+        samples: settings.speed_test_samples.clamp(1, MAX_DELAY_TEST_SAMPLES),
+    }
+}
+
+fn normalize_test_url(candidate: &str) -> String {
+    if let Ok(parsed) = Url::parse(candidate.trim()) {
+        if matches!(parsed.scheme(), "http" | "https") {
+            return candidate.trim().to_owned();
+        }
+    }
+    DEFAULT_DELAY_TEST_URL.to_owned()
 }
 
 fn collect_proxy_groups(proxies: &serde_json::Map<String, Value>) -> Vec<ProxyGroup> {

@@ -20,8 +20,9 @@ use std::{
 
 use models::{
     AppSettings, AppStatus, ImportSubscriptionRequest, ImportSubscriptionResult, IpCheckRequest,
-    IpCheckResult, MaintenanceActionResult, MaintenanceInfo, ProxyList, SelectProxyRequest,
-    SingboxReleaseInfo, SpeedTestResult, SpeedTestSummary, SubscriptionRefreshSummary,
+    IpCheckResult, MaintenanceActionResult, MaintenanceInfo, ProxyList, RenameSubscriptionRequest,
+    SelectProxyRequest, SingboxReleaseInfo, SpeedTestNodesRequest, SpeedTestResult,
+    SpeedTestSummary, SubscriptionInfo, SubscriptionRefreshSummary,
 };
 use singbox::SingboxManager;
 use system::{
@@ -270,6 +271,25 @@ async fn run_scheduled_speed_test(
 #[tauri::command]
 async fn speed_test_cache(app: AppHandle) -> Result<Vec<SpeedTestResult>, String> {
     node_automation::load_speed_test_cache(&app).map_err(to_err)
+}
+
+#[tauri::command]
+async fn speed_test_nodes(
+    app: AppHandle,
+    state: State<'_, SharedState>,
+    request: SpeedTestNodesRequest,
+) -> Result<Vec<SpeedTestResult>, String> {
+    let is_running = {
+        let core = state.core.lock().await;
+        core.is_running()
+    };
+    if !is_running {
+        return Err("core is not running, cannot test proxy delay".to_string());
+    }
+
+    node_automation::run_speed_test_for_nodes(&app, request.names)
+        .await
+        .map_err(to_err)
 }
 
 #[tauri::command]
@@ -641,6 +661,14 @@ async fn refresh_subscription(
 }
 
 #[tauri::command]
+async fn rename_subscription(
+    app: AppHandle,
+    request: RenameSubscriptionRequest,
+) -> Result<SubscriptionInfo, String> {
+    subscriptions::rename_subscription(&app, &request.id, &request.name).map_err(to_err)
+}
+
+#[tauri::command]
 async fn delete_subscription(
     app: AppHandle,
     state: State<'_, SharedState>,
@@ -988,6 +1016,14 @@ fn normalize_settings_for_save(mut settings: AppSettings) -> AppSettings {
         .take()
         .map(|value| value.trim().to_owned())
         .filter(|value| !value.is_empty());
+    settings.speed_test_url = if is_http_url(&settings.speed_test_url) {
+        settings.speed_test_url.trim().to_owned()
+    } else {
+        defaults.speed_test_url
+    };
+    settings.speed_test_timeout_ms = settings.speed_test_timeout_ms.clamp(1000, 30000);
+    settings.speed_test_concurrency = settings.speed_test_concurrency.clamp(1, 16);
+    settings.speed_test_samples = settings.speed_test_samples.clamp(1, 5);
 
     settings.theme_color = match settings.theme_color.trim() {
         "mint" | "blue" | "cyan" | "purple" | "orange" => settings.theme_color.trim().to_owned(),
@@ -995,6 +1031,12 @@ fn normalize_settings_for_save(mut settings: AppSettings) -> AppSettings {
     };
 
     settings
+}
+
+fn is_http_url(value: &str) -> bool {
+    url::Url::parse(value.trim())
+        .map(|url| matches!(url.scheme(), "http" | "https"))
+        .unwrap_or(false)
 }
 
 fn to_err(error: anyhow::Error) -> String {
@@ -1090,6 +1132,7 @@ fn main() {
             check_admin,
             import_subscription,
             refresh_subscription,
+            rename_subscription,
             delete_subscription,
             maintenance_info,
             list_singbox_releases,
@@ -1106,6 +1149,7 @@ fn main() {
             clear_subscription_cache,
             run_scheduled_speed_test,
             speed_test_cache,
+            speed_test_nodes,
             reset_network_state,
             validate_current_config,
             export_diagnostics,

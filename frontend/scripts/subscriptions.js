@@ -62,7 +62,9 @@ function hideModal(){ document.getElementById('modal-layer').classList.remove('o
 
 async function fakeImport(){
   const input = document.getElementById('sub-input');
+  const nameInput = document.getElementById('sub-name-input');
   const url = input.value.trim();
+  const name = nameInput?.value.trim() || '';
   if(!url){
     input.focus();
     showToast('请先粘贴订阅链接。');
@@ -75,7 +77,8 @@ async function fakeImport(){
   }
   try{
     appendLog('[INFO] downloading subscription and preparing sing-box outbounds');
-    const result = await invoke('import_subscription', { request: { url } });
+    const request = name ? { url, name } : { url };
+    const result = await invoke('import_subscription', { request });
     settings = normalizeSettings(await invoke('get_settings'));
     status = await invoke('app_status');
     renderStatus(status);
@@ -84,9 +87,30 @@ async function fakeImport(){
     renderSettingsPanel(settings);
     hideModal();
     input.value = '';
+    if(nameInput) nameInput.value = '';
     showToast(`订阅已导入：${result.nodeCount} 个节点${result.restarted ? '，内核已重启' : ''}`);
     appendLog(`[INFO] subscription imported: ${result.subscription.name}, nodes=${result.nodeCount}`);
     if(status.coreRunning) await refreshProxies();
+  }catch(err){
+    showToast(formatError(err));
+    appendLog('[ERROR] ' + formatError(err));
+  }
+}
+
+async function renameSubscriptionItem(id){
+  if(!invoke) return;
+  const subscription = settings?.subscriptions?.find(item => item.id === id);
+  if(!subscription) return;
+  const nextName = window.prompt('订阅名称', subscription.name)?.trim();
+  if(!nextName || nextName === subscription.name) return;
+
+  try{
+    const updated = await invoke('rename_subscription', { request: { id, name: nextName } });
+    settings = normalizeSettings(await invoke('get_settings'));
+    renderSubscriptions(settings.subscriptions);
+    renderSelectedSubscriptionSummary();
+    renderSettingsPanel(settings);
+    showToast(`订阅已重命名：${updated.name}`);
   }catch(err){
     showToast(formatError(err));
     appendLog('[ERROR] ' + formatError(err));
@@ -118,6 +142,7 @@ function renderSubscriptions(subscriptions){
       <div class="sub-actions">
         <span class="badge ${ok ? 'bg' : 'ba'}">${ok ? '正常' : '失败'}</span>
         ${isRemoteSubscription(subscription) ? `<button class="icon-btn" onclick="refreshSubscriptionItem('${attr(subscription.id)}')" aria-label="更新订阅"><i class="ti ti-refresh"></i></button>` : ''}
+        <button class="icon-btn" onclick="renameSubscriptionItem('${attr(subscription.id)}')" aria-label="重命名订阅"><i class="ti ti-pencil"></i></button>
         <button class="icon-btn" onclick="deleteSubscriptionItem('${attr(subscription.id)}')" aria-label="删除订阅"><i class="ti ti-trash"></i></button>
       </div>
     </div>`;

@@ -4,11 +4,13 @@ use anyhow::{bail, Context, Result};
 use reqwest::header::{HeaderMap, HeaderValue, AUTHORIZATION};
 use serde::Deserialize;
 use serde_json::{json, Value};
+use url::Url;
 
 use crate::models::{AppSettings, ProxyList};
 
 const DELAY_TEST_URL: &str = "https://www.gstatic.com/generate_204";
 
+#[derive(Clone)]
 pub struct Client {
     http: reqwest::Client,
     base_url: String,
@@ -87,15 +89,28 @@ impl Client {
     }
 
     pub async fn delay_proxy(&self, name: &str) -> Result<u64> {
-        let path = format!(
-            "/proxies/{}/delay?timeout=5000&url={}",
-            urlencoding::encode(name),
-            urlencoding::encode(DELAY_TEST_URL)
-        );
+        self.delay_proxy_with_options(name, DELAY_TEST_URL, 5000)
+            .await
+    }
+
+    pub async fn delay_proxy_with_options(
+        &self,
+        name: &str,
+        test_url: &str,
+        timeout_ms: u64,
+    ) -> Result<u64> {
+        let mut url = Url::parse(&self.url("/")).context("failed to build clash api url")?;
+        url.path_segments_mut()
+            .map_err(|_| anyhow::anyhow!("failed to build proxy delay path"))?
+            .extend(["proxies", name, "delay"]);
+        url.query_pairs_mut()
+            .append_pair("timeout", &timeout_ms.to_string())
+            .append_pair("url", test_url);
 
         let response = self
             .http
-            .get(self.url(&path))
+            .get(url)
+            .timeout(Duration::from_millis(timeout_ms).saturating_add(Duration::from_secs(3)))
             .send()
             .await
             .context("failed to request proxy delay")?
@@ -104,6 +119,10 @@ impl Client {
             .json::<DelayResponse>()
             .await
             .context("failed to parse proxy delay")?;
+
+        if response.delay == 0 {
+            bail!("proxy delay returned 0");
+        }
 
         Ok(response.delay)
     }
