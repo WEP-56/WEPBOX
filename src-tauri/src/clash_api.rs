@@ -6,7 +6,7 @@ use serde::Deserialize;
 use serde_json::{json, Value};
 use url::Url;
 
-use crate::models::{AppSettings, ProxyList};
+use crate::models::{AppSettings, ProxyList, ProxyMode};
 
 const DELAY_TEST_URL: &str = "https://www.gstatic.com/generate_204";
 
@@ -88,6 +88,101 @@ impl Client {
         Ok(())
     }
 
+    pub async fn select_proxy_and_close_group_connections(
+        &self,
+        group: &str,
+        name: &str,
+    ) -> Result<usize> {
+        let connection_ids = self
+            .connection_ids_for_group(group)
+            .await
+            .unwrap_or_default();
+        self.select_proxy(group, name).await?;
+
+        let mut closed = 0;
+        for id in connection_ids {
+            if self.delete_connection(&id).await.is_ok() {
+                closed += 1;
+            }
+        }
+
+        Ok(closed)
+    }
+
+    pub async fn set_mode_and_close_connections(&self, mode: ProxyMode) -> Result<()> {
+        self.set_mode(mode).await?;
+        let _ = self.close_all_connections().await;
+        Ok(())
+    }
+
+    pub async fn set_mode(&self, mode: ProxyMode) -> Result<()> {
+        self.http
+            .patch(self.url("/configs"))
+            .json(&json!({ "mode": clash_mode_value(mode) }))
+            .send()
+            .await
+            .context("failed to request mode switch")?
+            .error_for_status()
+            .context("mode switch request failed")?;
+
+        Ok(())
+    }
+
+    pub async fn close_all_connections(&self) -> Result<()> {
+        self.http
+            .delete(self.url("/connections"))
+            .send()
+            .await
+            .context("failed to request connection cleanup")?
+            .error_for_status()
+            .context("connection cleanup request failed")?;
+
+        Ok(())
+    }
+
+    pub async fn connection_ids_for_group(&self, group: &str) -> Result<Vec<String>> {
+        let raw = self
+            .http
+            .get(self.url("/connections"))
+            .send()
+            .await
+            .context("failed to request connection list")?
+            .error_for_status()
+            .context("connection list request failed")?
+            .json::<Value>()
+            .await
+            .context("failed to parse connection list")?;
+
+        let ids = raw
+            .get("connections")
+            .and_then(Value::as_array)
+            .into_iter()
+            .flatten()
+            .filter(|connection| connection_uses_group(connection, group))
+            .filter_map(|connection| connection.get("id").and_then(Value::as_str))
+            .map(str::to_owned)
+            .collect();
+
+        Ok(ids)
+    }
+
+    pub async fn delete_connection(&self, id: &str) -> Result<()> {
+        let mut url = Url::parse(&self.url("/")).context("failed to build clash api url")?;
+        url.path_segments_mut()
+            .map_err(|_| anyhow::anyhow!("failed to build connection delete path"))?
+            .extend(["connections", id]);
+
+        self.http
+            .delete(url)
+            .send()
+            .await
+            .context("failed to request connection delete")?
+            .error_for_status()
+            .context("connection delete request failed")?;
+
+        Ok(())
+    }
+
     pub async fn delay_proxy(&self, name: &str) -> Result<u64> {
         self.delay_proxy_with_options(name, DELAY_TEST_URL, 5000)
             .await
@@ -135,4 +230,21 @@ impl Client {
 #[derive(Debug, Deserialize)]
 struct DelayResponse {
     delay: u64,
+}
+
+fn connection_uses_group(connection: &Value, group: &str) -> bool {
+    connection
+        .get("chains")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .any(|chain| chain.as_str() == Some(group))
+}
+
+fn clash_mode_value(mode: ProxyMode) -> &'static str {
+    match mode {
+        ProxyMode::Direct => "direct",
+        ProxyMode::Global => "global",
+        ProxyMode::Rule => "rule",
+    }
 }

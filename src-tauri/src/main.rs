@@ -62,6 +62,32 @@ async fn save_settings(app: AppHandle, settings: AppSettings) -> Result<AppSetti
 }
 
 #[tauri::command]
+async fn set_mode(
+    app: AppHandle,
+    state: State<'_, SharedState>,
+    mode: models::ProxyMode,
+) -> Result<AppSettings, String> {
+    let mut settings = config::load_or_create_settings(&app).map_err(to_err)?;
+    settings.mode = mode;
+    let settings = normalize_settings_for_save(settings);
+    config::save_settings(&app, &settings).map_err(to_err)?;
+    config::write_singbox_config(&app, &settings).map_err(to_err)?;
+
+    let is_running = {
+        let core = state.core.lock().await;
+        core.is_running()
+    };
+    if is_running {
+        clash_api::Client::from_settings(&settings)
+            .set_mode_and_close_connections(mode)
+            .await
+            .map_err(to_err)?;
+    }
+
+    Ok(settings)
+}
+
+#[tauri::command]
 async fn maintenance_info(app: AppHandle) -> Result<MaintenanceInfo, String> {
     let app_data_dir = config::app_data_dir(&app).map_err(to_err)?;
     let settings_path = config::settings_path(&app).map_err(to_err)?;
@@ -527,6 +553,12 @@ async fn restart_core(app: AppHandle, state: State<'_, SharedState>) -> Result<A
 }
 
 async fn restart_core_inner(app: AppHandle, state: SharedState) -> Result<AppStatus, String> {
+    if let Ok(settings) = config::load_or_create_settings(&app) {
+        let _ = clash_api::Client::from_settings(&settings)
+            .close_all_connections()
+            .await;
+    }
+
     {
         let mut core = state.core.lock().await;
         core.stop().await.map_err(to_err)?;
@@ -548,8 +580,9 @@ async fn list_proxies(app: AppHandle) -> Result<ProxyList, String> {
 async fn select_proxy(app: AppHandle, request: SelectProxyRequest) -> Result<(), String> {
     let settings = config::load_or_create_settings(&app).map_err(to_err)?;
     clash_api::Client::from_settings(&settings)
-        .select_proxy(&request.group, &request.name)
+        .select_proxy_and_close_group_connections(&request.group, &request.name)
         .await
+        .map(|_| ())
         .map_err(to_err)
 }
 
@@ -821,7 +854,13 @@ fn set_mode_from_tray(app: AppHandle, mode: models::ProxyMode) {
                     return;
                 }
                 if was_running {
-                    let _ = restart_core_inner(app, state).await;
+                    if let Err(error) = clash_api::Client::from_settings(&settings)
+                        .set_mode_and_close_connections(mode)
+                        .await
+                    {
+                        eprintln!("[tray] runtime mode switch failed: {error}");
+                        let _ = restart_core_inner(app, state).await;
+                    }
                 }
             }
             Err(error) => eprintln!("[tray] load settings failed: {error}"),
@@ -1122,6 +1161,7 @@ fn main() {
         .invoke_handler(tauri::generate_handler![
             get_settings,
             save_settings,
+            set_mode,
             app_status,
             start_core,
             stop_core,

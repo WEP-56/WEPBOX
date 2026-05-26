@@ -75,10 +75,29 @@ async function toggleTun(){
 
 async function setMode(el, mode){
   settings = normalizeSettings(settings);
-  settings.mode = mode;
   renderMode(mode);
+
+  if(invoke){
+    try{
+      settings = normalizeSettings(await invoke('set_mode', { mode }));
+      renderMode(settings.mode);
+      renderSettingsPanel(settings);
+      if(status?.coreRunning){
+        await refreshProxies();
+      }
+      showToast('模式已切换，旧连接已清理。');
+      appendLog(`[INFO] route mode applied: ${mode}`);
+      return;
+    }catch(err){
+      showToast(formatError(err));
+      appendLog('[ERROR] ' + formatError(err));
+      renderMode(settings.mode);
+      return;
+    }
+  }
+
+  settings.mode = mode;
   renderSettingsPanel(settings);
-  await saveCurrentSettings({ restartCore: true });
   appendLog(`[INFO] route mode saved: ${mode}`);
 }
 

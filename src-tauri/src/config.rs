@@ -442,13 +442,6 @@ fn build_route_rules(settings: &AppSettings) -> Vec<Value> {
         json!({ "rule_set": RS_GEOSITE_GEOLOCATION_NOT_CN, "outbound": TAG_PROXY }),
     ]);
 
-    if settings.tun_enabled && settings.fake_dns_enabled {
-        rules.push(json!({
-            "ip_cidr": [settings.fake_ip_v4_range.clone(), settings.fake_ip_v6_range.clone()],
-            "outbound": TAG_DIRECT
-        }));
-    }
-
     rules
 }
 
@@ -1230,6 +1223,27 @@ mod tests {
             "tag": "real",
             "server": "proxy.example.com"
         })));
+    }
+
+    #[test]
+    fn fakeip_cidr_is_not_forced_to_direct_route() {
+        let settings = AppSettings {
+            tun_enabled: true,
+            fake_dns_enabled: true,
+            ..AppSettings::default()
+        };
+        let rules = build_route_rules(&settings);
+
+        assert!(!rules.iter().any(|rule| {
+            rule.get("ip_cidr")
+                .and_then(serde_json::Value::as_array)
+                .is_some_and(|cidrs| {
+                    cidrs
+                        .iter()
+                        .any(|cidr| cidr.as_str() == Some(settings.fake_ip_v4_range.as_str()))
+                })
+                && rule.get("outbound").and_then(serde_json::Value::as_str) == Some(TAG_DIRECT)
+        }));
     }
 
     #[test]

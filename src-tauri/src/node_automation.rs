@@ -85,7 +85,11 @@ pub async fn run_speed_test(
                 continue;
             }
 
-            if client.select_proxy(&group.name, best_name).await.is_ok() {
+            if client
+                .select_proxy_and_close_group_connections(&group.name, best_name)
+                .await
+                .is_ok()
+            {
                 selected.push(AutoSelectedProxy {
                     group: group.name,
                     name: best_name.clone(),
@@ -117,7 +121,11 @@ pub async fn run_speed_test(
                 continue;
             }
 
-            if client.select_proxy(&group.name, best_name).await.is_ok() {
+            if client
+                .select_proxy_and_close_group_connections(&group.name, best_name)
+                .await
+                .is_ok()
+            {
                 selected.push(AutoSelectedProxy {
                     group: group.name,
                     name: best_name.clone(),
