@@ -47,6 +47,8 @@ pub struct AppSettings {
     pub resume_after_elevation: bool,
     #[serde(default = "default_false")]
     pub rule_defaults_migrated: bool,
+    #[serde(default = "default_false")]
+    pub tun_stability_defaults_migrated: bool,
     #[serde(default)]
     pub subscriptions: Vec<SubscriptionInfo>,
 }
@@ -90,7 +92,7 @@ impl Default for AppSettings {
             tun_interface_name: "singbox_tun".to_owned(),
             tun_mtu: 1500,
             tun_auto_route: true,
-            tun_strict_route: true,
+            tun_strict_route: false,
             tun_route_exclude_address: vec![
                 "10.0.0.0/8".to_owned(),
                 "100.64.0.0/10".to_owned(),
@@ -106,6 +108,7 @@ impl Default for AppSettings {
             converter_url: None,
             resume_after_elevation: false,
             rule_defaults_migrated: true,
+            tun_stability_defaults_migrated: true,
             subscriptions: Vec::new(),
         }
     }

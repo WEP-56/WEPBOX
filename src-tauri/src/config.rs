@@ -74,6 +74,38 @@ const LOCAL_DOMAIN_SUFFIXES: &[&str] = &[
     "msftncsi.com",
 ];
 
+const CN_DIRECT_DOMAIN_SUFFIXES: &[&str] = &[
+    "bilibili.com",
+    "bilivideo.com",
+    "biliapi.net",
+    "hdslb.com",
+    "acgvideo.com",
+    "zhihu.com",
+    "zhimg.com",
+    "xiaohongshu.com",
+    "xiaohongshu.net",
+    "xhscdn.com",
+    "xhslink.com",
+    "weibo.com",
+    "weibo.cn",
+    "sina.com.cn",
+    "sinaimg.cn",
+    "sinajs.cn",
+    "jd.com",
+    "jdcloud.com",
+    "360buyimg.com",
+    "jdpay.com",
+    "qq.com",
+    "gtimg.com",
+    "qpic.cn",
+    "qlogo.cn",
+    "myqcloud.com",
+    "tencent.com",
+    "tencent-cloud.net",
+    "weixin.qq.com",
+    "weixinbridge.com",
+];
+
 const SERVICE_RULES: &[(&str, &str, &str)] = &[
     (RS_GEOSITE_TELEGRAM, TAG_TELEGRAM, "Telegram"),
     (RS_GEOSITE_YOUTUBE, TAG_YOUTUBE, "YouTube"),
@@ -150,7 +182,11 @@ pub fn load_or_create_settings(app: &AppHandle) -> Result<AppSettings> {
     let mut settings: AppSettings =
         serde_json::from_str(&content).context("failed to parse app settings")?;
     let migrated_rule_defaults = migrate_rule_defaults(&mut settings);
-    if sanitize_subscription_metadata(&mut settings) || migrated_rule_defaults {
+    let migrated_tun_defaults = migrate_tun_stability_defaults(&mut settings);
+    if sanitize_subscription_metadata(&mut settings)
+        || migrated_rule_defaults
+        || migrated_tun_defaults
+    {
         save_settings(app, &settings)?;
     }
     Ok(settings)
@@ -320,14 +356,21 @@ fn build_dns_servers(settings: &AppSettings, strategy: &str) -> Result<Vec<Value
             "tag": DNS_RESOLVER,
             "type": "local"
         }),
-        build_dns_server(
-            DNS_DIRECT,
-            direct_address,
-            strategy,
-            Some(TAG_DIRECT),
-            Some(DNS_RESOLVER),
-            settings.experimental_quic,
-        )?,
+        if settings.tun_enabled
+            && settings.tun_strict_route
+            && settings.custom_dns_servers.first().is_none()
+        {
+            build_tun_strict_direct_dns_server(DNS_DIRECT, strategy)
+        } else {
+            build_dns_server(
+                DNS_DIRECT,
+                direct_address,
+                strategy,
+                Some(TAG_DIRECT),
+                Some(DNS_RESOLVER),
+                settings.experimental_quic,
+            )?
+        },
         build_dns_server(
             DNS_REMOTE,
             remote_address,
@@ -350,11 +393,29 @@ fn build_dns_servers(settings: &AppSettings, strategy: &str) -> Result<Vec<Value
     Ok(servers)
 }
 
+fn build_tun_strict_direct_dns_server(tag: &str, strategy: &str) -> Value {
+    json!({
+        "tag": tag,
+        "type": "https",
+        "server": "223.5.5.5",
+        "server_port": 443,
+        "path": "/dns-query",
+        "tls": {
+            "server_name": "dns.alidns.com"
+        },
+        "domain_resolver": {
+            "server": DNS_RESOLVER,
+            "strategy": strategy
+        }
+    })
+}
+
 fn build_dns_rules(settings: &AppSettings) -> Vec<Value> {
     let mut rules = vec![
         json!({ "clash_mode": "direct", "server": DNS_DIRECT }),
         json!({ "clash_mode": "global", "server": DNS_REMOTE }),
         json!({ "domain_suffix": LOCAL_DOMAIN_SUFFIXES, "server": DNS_DIRECT }),
+        json!({ "domain_suffix": CN_DIRECT_DOMAIN_SUFFIXES, "server": DNS_DIRECT }),
         json!({ "rule_set": RS_GEOSITE_PRIVATE, "server": DNS_DIRECT }),
         json!({ "rule_set": [RS_GEOSITE_CN, RS_GEOIP_CN], "server": DNS_DIRECT }),
         json!({ "rule_set": RS_GEOSITE_GEOLOCATION_NOT_CN, "server": DNS_REMOTE }),
@@ -411,10 +472,6 @@ fn build_route_rules(settings: &AppSettings) -> Vec<Value> {
         rules.push(json!({ "protocol": "dns", "action": "hijack-dns" }));
     }
 
-    if settings.tun_enabled {
-        rules.push(json!({ "protocol": "quic", "outbound": TAG_BLOCK }));
-    }
-
     rules.extend(settings.user_route_rules.iter().cloned());
 
     rules.extend([
@@ -437,6 +494,7 @@ fn build_route_rules(settings: &AppSettings) -> Vec<Value> {
     rules.extend([
         json!({ "ip_cidr": PRIVATE_IP_CIDRS, "outbound": TAG_DIRECT }),
         json!({ "domain_suffix": LOCAL_DOMAIN_SUFFIXES, "outbound": TAG_DIRECT }),
+        json!({ "domain_suffix": CN_DIRECT_DOMAIN_SUFFIXES, "outbound": TAG_DIRECT }),
         json!({ "rule_set": RS_GEOSITE_PRIVATE, "outbound": TAG_DIRECT }),
         json!({ "rule_set": [RS_GEOSITE_CN, RS_GEOIP_CN], "outbound": TAG_DIRECT }),
         json!({ "rule_set": RS_GEOSITE_GEOLOCATION_NOT_CN, "outbound": TAG_PROXY }),
@@ -956,6 +1014,16 @@ fn migrate_rule_defaults(settings: &mut AppSettings) -> bool {
     true
 }
 
+fn migrate_tun_stability_defaults(settings: &mut AppSettings) -> bool {
+    if settings.tun_stability_defaults_migrated {
+        return false;
+    }
+
+    settings.tun_strict_route = false;
+    settings.tun_stability_defaults_migrated = true;
+    true
+}
+
 fn is_reserved_subscription_tag(tag: &str) -> bool {
     matches!(
         tag.trim(),
@@ -1024,10 +1092,11 @@ fn is_informational_tag_clean(tag: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::{
-        build_dns_rules, build_dns_server, build_route_rules, build_rule_sets_for_settings,
-        build_tun_inbound, normalize_imported_outbound, rule_set_download_detour,
-        should_include_outbound_in_selector, DNS_FAKEIP, DNS_RESOLVER, LOCAL_DOMAIN_SUFFIXES,
-        QUIC_INITIAL_PACKET_SIZE, TAG_DIRECT, TAG_GOOGLE, TAG_PROXY, UDP_CONNECT_TIMEOUT,
+        build_dns_rules, build_dns_server, build_dns_servers, build_route_rules,
+        build_rule_sets_for_settings, build_tun_inbound, normalize_imported_outbound,
+        rule_set_download_detour, should_include_outbound_in_selector, CN_DIRECT_DOMAIN_SUFFIXES,
+        DNS_FAKEIP, DNS_RESOLVER, LOCAL_DOMAIN_SUFFIXES, QUIC_INITIAL_PACKET_SIZE, TAG_DIRECT,
+        TAG_GOOGLE, TAG_PROXY, UDP_CONNECT_TIMEOUT,
     };
     use crate::models::{AppSettings, FallbackPolicy, ProxyMode};
 
@@ -1100,6 +1169,28 @@ mod tests {
     }
 
     #[test]
+    fn tun_strict_route_uses_https_direct_dns_by_default() {
+        let settings = AppSettings {
+            tun_enabled: true,
+            tun_strict_route: true,
+            custom_dns_servers: Vec::new(),
+            ..AppSettings::default()
+        };
+        let servers = build_dns_servers(&settings, "ipv4_only").expect("dns servers");
+        let direct = servers
+            .iter()
+            .find(|server| {
+                server.get("tag").and_then(serde_json::Value::as_str) == Some("dns_direct")
+            })
+            .expect("direct dns server");
+
+        assert_eq!(direct["type"], "https");
+        assert_eq!(direct["server"], "223.5.5.5");
+        assert_eq!(direct["server_port"], 443);
+        assert_eq!(direct["tls"]["server_name"], "dns.alidns.com");
+    }
+
+    #[test]
     fn mixed_inbound_does_not_use_legacy_sniff_fields() {
         let settings = AppSettings::default();
         let mixed = serde_json::json!({
@@ -1149,14 +1240,14 @@ mod tests {
     }
 
     #[test]
-    fn tun_mode_blocks_quic_to_avoid_udp_stalls() {
+    fn tun_mode_does_not_block_quic_by_default() {
         let settings = AppSettings {
             tun_enabled: true,
             ..AppSettings::default()
         };
         let rules = build_route_rules(&settings);
 
-        assert!(rules.iter().any(|rule| {
+        assert!(!rules.iter().any(|rule| {
             rule.get("protocol").and_then(serde_json::Value::as_str) == Some("quic")
                 && rule.get("outbound").and_then(serde_json::Value::as_str) == Some("BLOCK")
         }));
@@ -1292,6 +1383,54 @@ mod tests {
     }
 
     #[test]
+    fn domestic_site_fallback_domains_stay_direct_before_fakeip() {
+        let settings = AppSettings {
+            tun_enabled: true,
+            mode: ProxyMode::Rule,
+            ..AppSettings::default()
+        };
+        let dns_rules = build_dns_rules(&settings);
+        let route_rules = build_route_rules(&settings);
+
+        assert!(CN_DIRECT_DOMAIN_SUFFIXES.contains(&"xiaohongshu.com"));
+        assert!(CN_DIRECT_DOMAIN_SUFFIXES.contains(&"weibo.com"));
+        assert!(CN_DIRECT_DOMAIN_SUFFIXES.contains(&"jd.com"));
+        assert!(CN_DIRECT_DOMAIN_SUFFIXES.contains(&"qq.com"));
+
+        let dns_direct_idx = dns_rules
+            .iter()
+            .position(|rule| {
+                rule.get("domain_suffix")
+                    .and_then(serde_json::Value::as_array)
+                    .is_some_and(|suffixes| {
+                        suffixes
+                            .iter()
+                            .any(|value| value.as_str() == Some("xiaohongshu.com"))
+                    })
+                    && rule.get("server").and_then(serde_json::Value::as_str) == Some("dns_direct")
+            })
+            .expect("domestic fallback dns rule");
+        let dns_fakeip_idx = dns_rules
+            .iter()
+            .position(|rule| {
+                rule.get("server").and_then(serde_json::Value::as_str) == Some(DNS_FAKEIP)
+            })
+            .expect("fakeip dns rule");
+        assert!(dns_direct_idx < dns_fakeip_idx);
+
+        assert!(route_rules.iter().any(|rule| {
+            rule.get("domain_suffix")
+                .and_then(serde_json::Value::as_array)
+                .is_some_and(|suffixes| {
+                    suffixes
+                        .iter()
+                        .any(|value| value.as_str() == Some("xiaohongshu.com"))
+                })
+                && rule.get("outbound").and_then(serde_json::Value::as_str) == Some(TAG_DIRECT)
+        }));
+    }
+
+    #[test]
     fn tun_rule_mode_keeps_cn_dns_direct_before_non_cn_fakeip() {
         let settings = AppSettings {
             tun_enabled: true,
@@ -1352,6 +1491,12 @@ mod tests {
     }
 
     #[test]
+    fn tun_strict_route_is_opt_in_by_default() {
+        let settings = AppSettings::default();
+        assert!(!settings.tun_strict_route);
+    }
+
+    #[test]
     fn ipv6_is_opt_in_by_default() {
         let settings = AppSettings::default();
         assert!(!settings.ipv6_enabled);
@@ -1378,6 +1523,23 @@ mod tests {
             settings.fallback,
             crate::models::FallbackPolicy::Direct
         ));
+    }
+
+    #[test]
+    fn old_tun_defaults_migrate_strict_route_off_once() {
+        let mut settings = AppSettings {
+            tun_strict_route: true,
+            tun_stability_defaults_migrated: false,
+            ..AppSettings::default()
+        };
+
+        assert!(super::migrate_tun_stability_defaults(&mut settings));
+        assert!(!settings.tun_strict_route);
+        assert!(settings.tun_stability_defaults_migrated);
+
+        settings.tun_strict_route = true;
+        assert!(!super::migrate_tun_stability_defaults(&mut settings));
+        assert!(settings.tun_strict_route);
     }
 
     #[test]
