@@ -1,3 +1,110 @@
+const TRAFFIC_STORAGE_KEY = 'wepboxTrafficTotals';
+const TRAFFIC_SAMPLE_SECONDS = 1.2;
+const TRAFFIC_VIEW_MODES = ['session', 'month', 'total'];
+const TRAFFIC_LABELS = {
+  session: '本次流量',
+  month: '本月流量',
+  total: '总使用'
+};
+
+function currentTrafficMonthKey(){
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+}
+
+function safeTrafficNumber(value){
+  const numeric = Number(value);
+  return Number.isFinite(numeric) && numeric > 0 ? numeric : 0;
+}
+
+function loadTrafficTotals(){
+  const monthKey = currentTrafficMonthKey();
+  let saved = {};
+
+  try{
+    saved = JSON.parse(localStorage.getItem(TRAFFIC_STORAGE_KEY) || '{}') || {};
+  }catch(err){
+    saved = {};
+  }
+
+  trafficTotals = {
+    session: 0,
+    month: saved.monthKey === monthKey ? safeTrafficNumber(saved.month) : 0,
+    total: safeTrafficNumber(saved.total),
+    monthKey
+  };
+
+  if(saved.monthKey !== monthKey){
+    saveTrafficTotals();
+  }
+}
+
+function saveTrafficTotals(){
+  try{
+    localStorage.setItem(TRAFFIC_STORAGE_KEY, JSON.stringify({
+      month: Math.round(trafficTotals.month),
+      total: Math.round(trafficTotals.total),
+      monthKey: trafficTotals.monthKey || currentTrafficMonthKey()
+    }));
+  }catch(err){
+    console.warn('save traffic totals failed', err);
+  }
+}
+
+function ensureCurrentTrafficMonth(){
+  const monthKey = currentTrafficMonthKey();
+  if(trafficTotals.monthKey === monthKey) return;
+  trafficTotals.month = 0;
+  trafficTotals.monthKey = monthKey;
+  saveTrafficTotals();
+}
+
+function formatTrafficBytes(bytes){
+  const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+  let value = safeTrafficNumber(bytes);
+  let unitIndex = 0;
+
+  while(value >= 1024 && unitIndex < units.length - 1){
+    value /= 1024;
+    unitIndex += 1;
+  }
+
+  if(unitIndex === 0) return `${Math.round(value)} ${units[unitIndex]}`;
+  const digits = value >= 100 ? 0 : value >= 10 ? 1 : 2;
+  return `${value.toFixed(digits)} ${units[unitIndex]}`;
+}
+
+function renderTrafficSummary(){
+  const label = document.getElementById('traffic-summary-label');
+  const value = document.getElementById('traffic-summary-value');
+  if(!label || !value) return;
+
+  ensureCurrentTrafficMonth();
+  label.textContent = TRAFFIC_LABELS[trafficViewMode] || TRAFFIC_LABELS.session;
+  value.textContent = formatTrafficBytes(trafficTotals[trafficViewMode]);
+}
+
+function cycleTrafficSummary(){
+  const index = TRAFFIC_VIEW_MODES.indexOf(trafficViewMode);
+  trafficViewMode = TRAFFIC_VIEW_MODES[(index + 1) % TRAFFIC_VIEW_MODES.length];
+  renderTrafficSummary();
+}
+
+function recordTrafficSample(up, down, seconds){
+  ensureCurrentTrafficMonth();
+  const bytes = (safeTrafficNumber(up) + safeTrafficNumber(down)) * 1024 * 1024 * seconds;
+  if(bytes <= 0) {
+    renderTrafficSummary();
+    return;
+  }
+
+  trafficTotals.session += bytes;
+  trafficTotals.month += bytes;
+  trafficTotals.total += bytes;
+  saveTrafficTotals();
+  renderTrafficSummary();
+}
+
 function refreshChartSummary(index, maxValue){
   const point = chartPoints[index] || chartPoints[chartPoints.length - 1] || { up: 0, down: 0 };
   document.getElementById('chart-hover-time').textContent = index === chartPoints.length - 1 ? '当前' : `${chartPoints.length - 1 - index} 秒前`;
@@ -50,6 +157,8 @@ function pushTrafficPoint(up, down){
 }
 
 function startDashboardTicker(){
+  loadTrafficTotals();
+  renderTrafficSummary();
   installChartHover();
   renderTrafficChart();
 
@@ -73,7 +182,8 @@ function startDashboardTicker(){
     document.getElementById('mem-val').textContent = mem + '%';
     document.getElementById('mem-bar').style.width = mem + '%';
 
+    recordTrafficSample(up, down, TRAFFIC_SAMPLE_SECONDS);
     pushTrafficPoint(up, down);
     renderTrafficChart();
-  }, 1200);
+  }, TRAFFIC_SAMPLE_SECONDS * 1000);
 }

@@ -2,6 +2,7 @@
 
 mod clash_api;
 mod config;
+mod ip_check;
 mod models;
 mod node_automation;
 mod singbox;
@@ -18,9 +19,9 @@ use std::{
 };
 
 use models::{
-    AppSettings, AppStatus, ImportSubscriptionRequest, ImportSubscriptionResult,
-    MaintenanceActionResult, MaintenanceInfo, ProxyList, SelectProxyRequest, SpeedTestResult,
-    SingboxReleaseInfo, SpeedTestSummary, SubscriptionRefreshSummary,
+    AppSettings, AppStatus, ImportSubscriptionRequest, ImportSubscriptionResult, IpCheckRequest,
+    IpCheckResult, MaintenanceActionResult, MaintenanceInfo, ProxyList, SelectProxyRequest,
+    SingboxReleaseInfo, SpeedTestResult, SpeedTestSummary, SubscriptionRefreshSummary,
 };
 use singbox::SingboxManager;
 use system::{
@@ -87,6 +88,11 @@ async fn maintenance_info(app: AppHandle) -> Result<MaintenanceInfo, String> {
 #[tauri::command]
 async fn list_singbox_releases() -> Result<Vec<SingboxReleaseInfo>, String> {
     singbox::list_singbox_releases().await.map_err(to_err)
+}
+
+#[tauri::command]
+async fn run_ip_check(request: IpCheckRequest) -> Result<IpCheckResult, String> {
+    ip_check::run_ip_check(request).await.map_err(to_err)
 }
 
 #[tauri::command]
@@ -971,6 +977,11 @@ fn normalize_settings_for_save(mut settings: AppSettings) -> AppSettings {
     if settings.tun_route_exclude_address.is_empty() {
         settings.tun_route_exclude_address = defaults.tun_route_exclude_address;
     }
+    settings.user_route_rules = settings
+        .user_route_rules
+        .into_iter()
+        .filter(|rule| rule.is_object())
+        .collect();
 
     settings.converter_url = settings
         .converter_url
@@ -1082,6 +1093,7 @@ fn main() {
             delete_subscription,
             maintenance_info,
             list_singbox_releases,
+            run_ip_check,
             install_singbox_release,
             open_app_data_dir,
             open_log_dir,

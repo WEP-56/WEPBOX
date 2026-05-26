@@ -24,15 +24,15 @@
 }
 
 :root.light-theme {
-  --bg-app: #f6f8fb;
-  --bg-sidebar: rgba(255, 255, 255, 0.68);
-  --bg-card: rgba(255, 255, 255, 0.72);
-  --bg-card-strong: rgba(255, 255, 255, 0.88);
-  --bg-card-hover: rgba(255, 255, 255, 0.96);
-  --border-color: rgba(15, 23, 42, 0.08);
-  --border-strong: rgba(15, 23, 42, 0.14);
+  --bg-app: #f3f6fa;
+  --bg-sidebar: rgba(255, 255, 255, 0.78);
+  --bg-card: rgba(255, 255, 255, 0.84);
+  --bg-card-strong: rgba(255, 255, 255, 0.96);
+  --bg-card-hover: #ffffff;
+  --border-color: rgba(15, 23, 42, 0.12);
+  --border-strong: rgba(15, 23, 42, 0.18);
   --text-main: #0f172a;
-  --text-muted: #64748b;
+  --text-muted: #475569;
   --text-desc: #334155;
 }
 
@@ -64,6 +64,36 @@
   --color-active: #f97316;
   --color-active-gradient: linear-gradient(135deg, #fb923c, #ea580c);
   --color-glow: rgba(249, 115, 22, 0.2);
+}
+
+:root.light-theme body.theme-mint {
+  --color-active: #047857;
+  --color-active-gradient: linear-gradient(135deg, #059669, #047857);
+  --color-glow: rgba(4, 120, 87, 0.14);
+}
+
+:root.light-theme body.theme-blue {
+  --color-active: #1d4ed8;
+  --color-active-gradient: linear-gradient(135deg, #2563eb, #1d4ed8);
+  --color-glow: rgba(29, 78, 216, 0.14);
+}
+
+:root.light-theme body.theme-cyan {
+  --color-active: #0e7490;
+  --color-active-gradient: linear-gradient(135deg, #0891b2, #2563eb);
+  --color-glow: rgba(14, 116, 144, 0.14);
+}
+
+:root.light-theme body.theme-purple {
+  --color-active: #7e22ce;
+  --color-active-gradient: linear-gradient(135deg, #9333ea, #7e22ce);
+  --color-glow: rgba(126, 34, 206, 0.15);
+}
+
+:root.light-theme body.theme-orange {
+  --color-active: #c2410c;
+  --color-active-gradient: linear-gradient(135deg, #ea580c, #c2410c);
+  --color-glow: rgba(194, 65, 12, 0.15);
 }
 
 * {
@@ -233,6 +263,12 @@ button {
   background: var(--bg-card-strong);
 }
 
+.sidebar-bottom {
+  margin-top: auto;
+  margin-bottom: 0;
+  order: 2;
+}
+
 .content {
   flex: 1;
   height: calc(100vh - 32px);
@@ -273,6 +309,10 @@ button {
 #pg-settings {
   max-width: 960px;
   overflow: hidden;
+}
+
+#pg-ipcheck {
+  max-width: 1120px;
 }
 
 @keyframes fadeIn {
@@ -385,6 +425,28 @@ button {
   gap: 2px;
 }
 
+.traffic-summary {
+  min-width: 76px;
+  padding: 4px 0;
+  background: transparent;
+  border: 0;
+  border-radius: 8px;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  text-align: right;
+}
+
+.traffic-summary:hover .info-value,
+.traffic-summary:focus-visible .info-value {
+  color: var(--color-active);
+}
+
+.traffic-summary:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--color-active) 45%, transparent);
+  outline-offset: 4px;
+}
+
 .info-label {
   font-size: 11px;
   color: var(--text-muted);
@@ -490,6 +552,17 @@ button {
 .capsule-btn.on {
   background: rgba(255, 255, 255, 0.06);
   color: var(--text-main);
+}
+
+:root.light-theme .capsule-container,
+:root.light-theme .tun-card {
+  background: rgba(255, 255, 255, 0.74);
+}
+
+:root.light-theme .capsule-btn:hover,
+:root.light-theme .capsule-btn.on {
+  background: #ffffff;
+  box-shadow: 0 1px 4px rgba(15, 23, 42, 0.06);
 }
 
 .tun-card {
@@ -685,6 +758,14 @@ button {
 .chart-bar.active {
   background: var(--color-active);
   box-shadow: 0 0 14px var(--color-glow);
+}
+
+:root.light-theme .chart-bar {
+  background: rgba(15, 23, 42, 0.08);
+}
+
+:root.light-theme .chart-bar.active {
+  box-shadow: 0 0 10px var(--color-glow);
 }
 
 .chart-axis-x {
@@ -1294,6 +1375,16 @@ button {
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
 }
 
+:root.light-theme .settings-nav {
+  background: rgba(15, 23, 42, 0.04);
+  border-radius: 12px;
+  padding: 3px;
+}
+
+:root.light-theme .settings-nav-btn.active {
+  box-shadow: 0 1px 4px rgba(15, 23, 42, 0.06);
+}
+
 .settings-section {
   display: none;
 }
@@ -1351,6 +1442,10 @@ button {
 .row:hover {
   background: var(--bg-card-hover);
   border-color: rgba(255, 255, 255, 0.06);
+}
+
+:root.light-theme .row:hover {
+  border-color: rgba(15, 23, 42, 0.16);
 }
 
 .row-l {
@@ -1463,6 +1558,13 @@ button {
   color: #f8fafc;
 }
 
+:root.light-theme .setting-input,
+:root.light-theme .setting-select,
+:root.light-theme .setting-textarea {
+  background: rgba(255, 255, 255, 0.78);
+  border-color: rgba(15, 23, 42, 0.14);
+}
+
 :root.light-theme .setting-select option {
   background: #ffffff;
   color: #111827;
@@ -1474,6 +1576,361 @@ button {
   padding: 10px 12px;
   line-height: 1.5;
   resize: vertical;
+}
+
+.ipcheck-shell {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.ipcheck-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.ipcheck-sub {
+  margin-top: 6px;
+  color: var(--text-desc);
+  font-size: 13px;
+}
+
+.ipcheck-run {
+  min-width: 132px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.ipcheck-result {
+  min-height: 0;
+}
+
+.ipcheck-compact-grid {
+  display: grid;
+  grid-template-columns: minmax(360px, 0.95fr) minmax(420px, 1.05fr);
+  gap: 16px;
+  align-items: stretch;
+}
+
+.ipcheck-card {
+  min-height: 430px;
+  display: flex;
+  flex-direction: column;
+}
+
+.ipcheck-card.muted {
+  opacity: 0.72;
+}
+
+.ipcheck-card-head {
+  height: 46px;
+  padding: 0 14px;
+  border-bottom: 1px solid var(--border-color);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+.ipcheck-card-head span {
+  width: 20px;
+  height: 20px;
+  margin-right: 8px;
+  border-radius: 50%;
+  background: var(--text-main);
+  color: var(--bg-app);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.ipcheck-card-body {
+  flex: 1;
+  padding: 16px 14px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.ipcheck-card-empty {
+  flex: 1;
+  min-height: 340px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  color: var(--text-muted);
+  text-align: center;
+}
+
+.ipcheck-card-empty i {
+  font-size: 76px;
+  color: rgba(255, 255, 255, 0.05);
+}
+
+.ipcheck-main-ip {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--text-main);
+  font-family: ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", monospace;
+  font-size: 21px;
+  font-weight: 800;
+  overflow-wrap: anywhere;
+}
+
+.ipcheck-main-ip i {
+  color: var(--text-desc);
+}
+
+.ipcheck-loc-grid,
+.ipcheck-quality-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.ipcheck-quality-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  padding-top: 14px;
+  border-top: 1px solid var(--border-color);
+}
+
+.ipcheck-loc-grid div,
+.ipcheck-quality-grid div,
+.ipcheck-network,
+.ipcheck-asn {
+  min-width: 0;
+}
+
+.ipcheck-loc-grid span,
+.ipcheck-quality-grid span,
+.ipcheck-network span,
+.ipcheck-asn span {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.ipcheck-loc-grid strong,
+.ipcheck-quality-grid strong,
+.ipcheck-network strong,
+.ipcheck-asn strong {
+  display: block;
+  margin-top: 6px;
+  color: var(--text-main);
+  font-size: 14px;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+.ipcheck-network {
+  padding-bottom: 14px;
+}
+
+.ipcheck-score {
+  grid-column: span 1;
+}
+
+.ipcheck-score > div {
+  margin-top: 8px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+}
+
+.ipcheck-score b {
+  height: 8px;
+  border-radius: 999px;
+  background: var(--color-success);
+}
+
+.ipcheck-asn {
+  margin-top: auto;
+  padding-top: 14px;
+  border-top: 1px solid var(--border-color);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.ipcheck-asn strong {
+  margin-left: 4px;
+  margin-top: 0;
+}
+
+.ipcheck-connectivity-panel {
+  min-height: 430px;
+  padding: 12px;
+}
+
+.connectivity-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.connectivity-card {
+  min-height: 82px;
+  padding: 12px;
+  border-radius: 8px;
+  border: 1px solid var(--border-color);
+  background: var(--bg-card);
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.connectivity-name {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--text-main);
+  font-size: 14px;
+}
+
+.connectivity-name i {
+  color: var(--text-desc);
+  font-size: 20px;
+}
+
+.connectivity-status {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.connectivity-status span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-muted);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.connectivity-card.ok .connectivity-status span {
+  color: var(--color-success);
+}
+
+.connectivity-card.slow .connectivity-status span {
+  color: var(--color-warning);
+}
+
+.connectivity-card.blocked .connectivity-status span {
+  color: var(--color-danger);
+}
+
+.connectivity-status em {
+  color: var(--text-muted);
+  font-style: normal;
+  font-size: 12px;
+}
+
+.connectivity-card.add {
+  min-height: 82px;
+  align-items: center;
+  justify-content: center;
+  border-style: dashed;
+  color: var(--text-muted);
+  cursor: pointer;
+  font: inherit;
+}
+
+.connectivity-card.add-form {
+  gap: 8px;
+  cursor: default;
+}
+
+.ipcheck-target-input {
+  width: 100%;
+  min-width: 0;
+  height: 26px;
+  padding: 0 8px;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--text-main);
+  font-size: 12px;
+  outline: none;
+}
+
+.ipcheck-target-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.ipcheck-target-actions button {
+  height: 24px;
+  padding: 0 8px;
+  border-radius: 6px;
+  border: 1px solid var(--border-color);
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--text-desc);
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.ipcheck-target-actions button:hover {
+  color: var(--text-main);
+}
+
+:root.light-theme .connectivity-card {
+  background: rgba(255, 255, 255, 0.7);
+}
+
+:root.light-theme .ipcheck-target-input,
+:root.light-theme .ipcheck-target-actions button,
+:root.light-theme .ruleset-grid span,
+:root.light-theme .settings-mode-btn,
+:root.light-theme .ghost-mini {
+  background: rgba(255, 255, 255, 0.76);
+  border-color: rgba(15, 23, 42, 0.13);
+}
+
+:root.light-theme .settings-mode-btn.on,
+:root.light-theme .settings-mode-btn:not(:disabled):hover,
+:root.light-theme .ghost-mini:not(:disabled):hover {
+  background: #ffffff;
+}
+
+.setting-textarea.rule-textarea {
+  width: min(420px, 50vw);
+  min-height: 132px;
+  font-family: ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", monospace;
+}
+
+.ruleset-grid {
+  width: 100%;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 8px;
+}
+
+.ruleset-grid span {
+  min-width: 0;
+  padding: 8px 10px;
+  border-radius: 10px;
+  border: 1px solid var(--border-color);
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--text-desc);
+  font-family: ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", monospace;
+  font-size: 11px;
+  overflow-wrap: anywhere;
 }
 
 .settings-kernel-updater {
@@ -1764,12 +2221,28 @@ button {
     width: 100%;
   }
 
+  .traffic-summary {
+    align-items: flex-start;
+    text-align: left;
+  }
+
   .home-metrics-grid,
+  .ipcheck-compact-grid,
+  .connectivity-grid,
   .settings-kernel-updater,
   .settings-path-grid,
   .settings-action-grid,
   .settings-mode-switch {
     grid-template-columns: 1fr;
+  }
+
+  .ipcheck-toolbar {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .ipcheck-run {
+    width: 100%;
   }
 
   .settings-nav {

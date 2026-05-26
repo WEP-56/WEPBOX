@@ -29,6 +29,7 @@
     <button class="nb" onclick="go('nodes')" aria-label="节点"><i class="ti ti-server"></i></button>
     <button class="nb" onclick="go('subscriptions')" aria-label="订阅"><i class="ti ti-link"></i></button>
     <button class="nb" onclick="go('settings')" aria-label="设置"><i class="ti ti-settings"></i></button>
+    <button class="nb sidebar-bottom" onclick="go('ipcheck')" aria-label="IP 检测"><i class="ti ti-radar-2"></i></button>
   </div>
 
   <div class="content">
@@ -51,10 +52,10 @@
               <div class="info-label">当前模式</div>
               <div class="info-value"><span id="home-mode-label">规则</span></div>
             </div>
-            <div class="info-minimal">
-              <div class="info-label">本月流量</div>
-              <div class="info-value">64.2 <span>/ 200 GB</span></div>
-            </div>
+            <button class="info-minimal traffic-summary" onclick="cycleTrafficSummary()" type="button" aria-label="切换流量统计">
+              <div class="info-label" id="traffic-summary-label">本次流量</div>
+              <div class="info-value" id="traffic-summary-value">0 B</div>
+            </button>
             <button class="big-tog" id="main-tog" onclick="toggleProxy()" aria-label="代理开关"></button>
           </div>
         </header>
@@ -265,11 +266,12 @@
         <div class="settings-overview card">
           <div>
             <div class="settings-title">设置页重构中</div>
-            <div class="settings-subtitle">按“常规 / 代理 / DNS-TUN / 订阅转换 / 运行维护”拆分。每项都明确标注是否已真实接入。</div>
+            <div class="settings-subtitle">按“常规 / 代理 / 规则 / DNS-TUN / 订阅转换 / 运行维护”拆分。每项都明确标注是否已真实接入。</div>
           </div>
           <div class="settings-nav">
             <button class="settings-nav-btn" onclick="scrollToSettingsSection('general')">常规</button>
             <button class="settings-nav-btn" onclick="scrollToSettingsSection('proxy')">代理</button>
+            <button class="settings-nav-btn" onclick="scrollToSettingsSection('rules')">规则</button>
             <button class="settings-nav-btn" onclick="scrollToSettingsSection('advanced')">DNS / TUN</button>
             <button class="settings-nav-btn" onclick="scrollToSettingsSection('subscription')">订阅转换</button>
             <button class="settings-nav-btn" onclick="scrollToSettingsSection('maintenance')">运行维护</button>
@@ -441,21 +443,6 @@
             </div>
             <div class="row">
               <div class="row-l">
-                <i class="ti ti-git-fork ri"></i>
-                <div>
-                  <div class="rn">规则模式 fallback</div>
-                  <div class="rs">当规则未命中时，决定默认走 `direct` 还是 `proxy`。</div>
-                </div>
-              </div>
-              <div class="setting-actions">
-                <select class="setting-select" id="fallback-select" onchange="updateSelectSetting('fallback', this.value, { restartCore: true })">
-                  <option value="direct">direct</option>
-                  <option value="proxy">proxy</option>
-                </select>
-              </div>
-            </div>
-            <div class="row">
-              <div class="row-l">
                 <i class="ti ti-network ri"></i>
                 <div>
                   <div class="rn">TUN 开关</div>
@@ -488,6 +475,85 @@
               </div>
               <div class="setting-actions">
                 <button class="tog" id="ipv6-tog" onclick="toggleSetting('ipv6Enabled')"></button>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section class="settings-section" id="settings-section-rules">
+          <div class="sec-label">规则管理</div>
+          <div class="settings-section-intro">规则按“前置自定义 / 模式规则 / 内置分流 / 国内直连 / 非 CN 代理 / fallback”顺序生效。</div>
+          <div class="card">
+            <div class="row">
+              <div class="row-l">
+                <i class="ti ti-git-fork ri"></i>
+                <div>
+                  <div class="rn">规则模式 fallback</div>
+                  <div class="rs">规则未命中时默认走 `proxy`，降低 TUN 规则模式下站点资源漏直连的概率。</div>
+                </div>
+              </div>
+              <div class="setting-actions">
+                <select class="setting-select" id="fallback-select" onchange="updateSelectSetting('fallback', this.value, { restartCore: true })">
+                  <option value="proxy">proxy</option>
+                  <option value="direct">direct</option>
+                </select>
+              </div>
+            </div>
+            <div class="row">
+              <div class="row-l">
+                <i class="ti ti-apps ri"></i>
+                <div>
+                  <div class="rn">增强应用规则集</div>
+                  <div class="rs">启用 Google / Telegram / YouTube / Netflix / OpenAI 等常用服务规则集，优先走代理。</div>
+                </div>
+              </div>
+              <div class="setting-actions">
+                <button class="tog" id="app-rules-tog" onclick="toggleSetting('appRulesEnabled', { restartCore: true })"></button>
+              </div>
+            </div>
+            <div class="row">
+              <div class="row-l">
+                <i class="ti ti-ad-off ri"></i>
+                <div>
+                  <div class="rn">广告规则拦截</div>
+                  <div class="rs">接入 `geosite-category-ads-all`，在 DNS 和路由层拒绝广告域名。</div>
+                </div>
+              </div>
+              <div class="setting-actions">
+                <button class="tog" id="block-ads-tog" onclick="toggleSetting('blockAdsEnabled', { restartCore: true })"></button>
+              </div>
+            </div>
+            <div class="row row-stack">
+              <div class="row-l">
+                <i class="ti ti-list-tree ri"></i>
+                <div>
+                  <div class="rn">当前内置规则集</div>
+                  <div class="rs">这些规则集会随配置写入 `route.rule_set`，运行时由 sing-box 下载和更新。</div>
+                </div>
+              </div>
+              <div class="ruleset-grid">
+                <span>geosite-private</span>
+                <span>geosite-cn</span>
+                <span>geoip-cn</span>
+                <span>geosite-geolocation-!cn</span>
+                <span>geosite-google</span>
+                <span>geosite-telegram</span>
+                <span>geosite-youtube</span>
+                <span>geosite-netflix</span>
+                <span>geosite-openai</span>
+                <span>geosite-category-ads-all</span>
+              </div>
+            </div>
+            <div class="row" style="align-items:flex-start">
+              <div class="row-l">
+                <i class="ti ti-adjustments ri"></i>
+                <div>
+                  <div class="rn">自定义前置规则</div>
+                  <div class="rs">JSON 数组，插入到内置规则前。可用于临时修正域名、IP 或进程分流。</div>
+                </div>
+              </div>
+              <div class="setting-actions wide top">
+                <textarea class="setting-textarea rule-textarea" id="user-route-rules-input" placeholder='[&#10;  { "domain_suffix": "example.com", "outbound": "PROXY" }&#10;]' onchange="updateUserRouteRules(this.value)"></textarea>
               </div>
             </div>
           </div>
@@ -792,6 +858,23 @@
         </section>
       </div>
     </div>
+
+    <div class="pg" id="pg-ipcheck">
+      <div class="ipcheck-shell">
+        <div class="ipcheck-toolbar">
+          <div>
+            <div class="sec-label">IP CHECK</div>
+            <div class="ipcheck-sub">手动刷新出口 IP 与本地连通性检测。</div>
+          </div>
+          <button class="ghost-mini ipcheck-run" id="ipcheck-run-btn" onclick="runIpCheck()">
+            <i class="ti ti-radar-2"></i>
+            <span>刷新 IP 信息</span>
+          </button>
+        </div>
+
+        <div class="ipcheck-result" id="ipcheck-result"></div>
+      </div>
+    </div>
   </div>
 
   <div class="modal-bg" id="modal-layer">
@@ -821,6 +904,7 @@
 <script src="./scripts/nodes.js"></script>
 <script src="./scripts/core.js"></script>
 <script src="./scripts/dashboard.js"></script>
+<script src="./scripts/ipcheck.js"></script>
 <script src="./scripts/app.js"></script>
 
 </body>

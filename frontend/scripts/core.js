@@ -2,7 +2,7 @@ async function go(name){
   pages.forEach(pageName => document.getElementById('pg-' + pageName).classList.remove('on'));
   document.getElementById('pg-' + name).classList.add('on');
 
-  const idx = { home: 0, nodes: 1, subscriptions: 2, settings: 3 }[name];
+  const idx = { home: 0, nodes: 1, subscriptions: 2, settings: 3, ipcheck: 4 }[name];
   navBtns.forEach(button => button.classList.remove('on'));
   if(idx !== undefined) navBtns[idx].classList.add('on');
 

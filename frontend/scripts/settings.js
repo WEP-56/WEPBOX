@@ -3,6 +3,8 @@ const CORE_RESTART_KEYS = new Set([
   'dnsGuardEnabled',
   'ipv6Enabled',
   'fakeDnsEnabled',
+  'appRulesEnabled',
+  'blockAdsEnabled',
   'tunAutoRoute',
   'tunStrictRoute'
 ]);
@@ -29,9 +31,10 @@ function scrollToSettingsSection(sectionId){
   const buttonIndex = {
     general: 0,
     proxy: 1,
-    advanced: 2,
-    subscription: 3,
-    maintenance: 4
+    rules: 2,
+    advanced: 3,
+    subscription: 4,
+    maintenance: 5
   }[sectionId];
 
   document.querySelectorAll('.settings-section').forEach(section => {
@@ -166,6 +169,36 @@ async function updateRouteExcludeAddresses(value){
   await saveCurrentSettings({ restartCore: true });
 }
 
+async function updateUserRouteRules(value){
+  settings = normalizeSettings(settings);
+  const raw = String(value || '').trim();
+  if(!raw){
+    settings.userRouteRules = [];
+    renderSettingsPanel(settings);
+    await saveCurrentSettings({ restartCore: true });
+    return;
+  }
+
+  let parsed;
+  try{
+    parsed = JSON.parse(raw);
+  }catch(err){
+    renderSettingsPanel(settings);
+    showToast('自定义规则必须是有效的 JSON 数组。');
+    return;
+  }
+
+  if(!Array.isArray(parsed) || parsed.some(item => !item || typeof item !== 'object' || Array.isArray(item))){
+    renderSettingsPanel(settings);
+    showToast('自定义规则必须是对象数组。');
+    return;
+  }
+
+  settings.userRouteRules = parsed;
+  renderSettingsPanel(settings);
+  await saveCurrentSettings({ restartCore: true });
+}
+
 function splitTextareaLines(value){
   return String(value || '')
     .split(/\r?\n|,/)
@@ -206,13 +239,15 @@ function renderSettingsPanel(current){
   setToggleState('auto-select-fastest-tog', current.autoSelectFastest);
   setToggleState('auto-switch-on-failure-tog', current.autoSwitchOnFailure);
   setToggleState('udp-acceleration-tog', current.udpAccelerationEnabled);
+  setToggleState('app-rules-tog', current.appRulesEnabled);
+  setToggleState('block-ads-tog', current.blockAdsEnabled);
   setToggleState('experimental-quic-tog', current.experimentalQuic);
   setToggleState('tun-auto-route-tog', current.tunAutoRoute);
   setToggleState('tun-strict-route-tog', current.tunStrictRoute);
   document.getElementById('follow-system-theme-tog')?.removeAttribute('disabled');
   renderThemePicker(current.themeColor);
 
-  setValue('fallback-select', current.fallback || 'direct');
+  setValue('fallback-select', current.fallback || 'proxy');
   setValue('auto-update-hours', String(current.autoUpdateHours ?? 24));
   setValue('speed-test-interval', current.speedTestInterval || 'every1Hour');
   setValue('local-mixed-port-input', String(current.localMixedPort ?? 7890));
@@ -225,6 +260,7 @@ function renderSettingsPanel(current){
   setValue('tun-interface-name-input', current.tunInterfaceName || '');
   setValue('tun-mtu-input', String(current.tunMtu ?? 1500));
   setValue('tun-route-exclude-input', (current.tunRouteExcludeAddress || []).join('\n'));
+  setValue('user-route-rules-input', JSON.stringify(current.userRouteRules || [], null, 2));
 
   renderMaintenanceInfo();
 }

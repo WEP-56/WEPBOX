@@ -243,7 +243,9 @@ pub async fn list_singbox_releases() -> Result<Vec<SingboxReleaseInfo>> {
             .filter_map(|release| release.into_release_info())
             .collect::<Vec<_>>(),
         Err(error) => {
-            eprintln!("[sing-box:update] GitHub API failed, falling back to releases page: {error}");
+            eprintln!(
+                "[sing-box:update] GitHub API failed, falling back to releases page: {error}"
+            );
             Vec::new()
         }
     };
@@ -468,7 +470,10 @@ async fn find_release_download_url(version: &str) -> Result<String> {
         .filter(|release| !release.draft && !release.prerelease)
         .find(|release| {
             normalize_release_version(&release.tag_name) == version
-                && release.assets.iter().any(|asset| target_asset_name(&asset.name))
+                && release
+                    .assets
+                    .iter()
+                    .any(|asset| target_asset_name(&asset.name))
         })
         .and_then(|release| {
             release

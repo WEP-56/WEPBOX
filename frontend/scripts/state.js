@@ -1,6 +1,6 @@
 const invoke = window.__TAURI__?.core?.invoke;
 const windowApi = window.__TAURI__?.window;
-const pages = ['home', 'nodes', 'subscriptions', 'settings'];
+const pages = ['home', 'nodes', 'subscriptions', 'settings', 'ipcheck'];
 const navBtns = document.querySelectorAll('.nb');
 let settings = null;
 let status = null;
@@ -8,6 +8,8 @@ let currentGroup = 'PROXY';
 let lastTraffic = null;
 let chartPoints = Array.from({ length: 12 }, () => ({ up: 0, down: 0 }));
 let chartHoverIndex = -1;
+let trafficViewMode = 'session';
+let trafficTotals = { session: 0, month: 0, total: 0, monthKey: '' };
 let proxySnapshot = null;
 let proxyGroupsState = [];
 let nodeSearchQuery = '';
@@ -15,6 +17,8 @@ let nodeSourceFilter = 'all';
 let overallTesting = false;
 let logExpanded = false;
 let maintenanceInfo = null;
+let ipCheckResult = null;
+let ipCheckLoading = false;
 let singboxReleases = [];
 let selectedSingboxRelease = '';
 let singboxReleaseLoading = false;
@@ -33,7 +37,7 @@ const DEFAULT_SETTINGS = Object.freeze({
   fakeDnsEnabled: true,
   proxyEnabled: false,
   mode: 'rule',
-  fallback: 'direct',
+  fallback: 'proxy',
   autoUpdateHours: 24,
   followSystemTheme: false,
   themeColor: 'cyan',
@@ -46,9 +50,11 @@ const DEFAULT_SETTINGS = Object.freeze({
   autoSwitchOnFailure: true,
   speedTestInterval: 'every1Hour',
   dnsGuardEnabled: true,
-  ipv6Enabled: true,
+  ipv6Enabled: false,
   udpAccelerationEnabled: true,
   allowLan: true,
+  appRulesEnabled: true,
+  blockAdsEnabled: false,
   experimentalQuic: false,
   customDnsServers: [],
   fakeIpV4Range: '198.18.0.0/15',
@@ -68,6 +74,7 @@ const DEFAULT_SETTINGS = Object.freeze({
     'fc00::/7',
     'fe80::/10'
   ],
+  userRouteRules: [],
   converterUrl: null,
   resumeAfterElevation: false,
   subscriptions: []
@@ -86,7 +93,8 @@ function normalizeSettings(next = {}){
         }))
       : [],
     customDnsServers: Array.isArray(source.customDnsServers) ? source.customDnsServers : [],
-    tunRouteExcludeAddress: Array.isArray(source.tunRouteExcludeAddress) ? source.tunRouteExcludeAddress : DEFAULT_SETTINGS.tunRouteExcludeAddress
+    tunRouteExcludeAddress: Array.isArray(source.tunRouteExcludeAddress) ? source.tunRouteExcludeAddress : DEFAULT_SETTINGS.tunRouteExcludeAddress,
+    userRouteRules: Array.isArray(source.userRouteRules) ? source.userRouteRules : []
   };
 }
 

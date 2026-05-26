@@ -27,6 +27,8 @@ pub struct AppSettings {
     pub ipv6_enabled: bool,
     pub udp_acceleration_enabled: bool,
     pub allow_lan: bool,
+    pub app_rules_enabled: bool,
+    pub block_ads_enabled: bool,
     pub experimental_quic: bool,
     pub custom_dns_servers: Vec<String>,
     pub fake_ip_v4_range: String,
@@ -36,8 +38,11 @@ pub struct AppSettings {
     pub tun_auto_route: bool,
     pub tun_strict_route: bool,
     pub tun_route_exclude_address: Vec<String>,
+    pub user_route_rules: Vec<Value>,
     pub converter_url: Option<String>,
     pub resume_after_elevation: bool,
+    #[serde(default = "default_false")]
+    pub rule_defaults_migrated: bool,
     #[serde(default)]
     pub subscriptions: Vec<SubscriptionInfo>,
 }
@@ -52,7 +57,7 @@ impl Default for AppSettings {
             fake_dns_enabled: true,
             proxy_enabled: false,
             mode: ProxyMode::Rule,
-            fallback: FallbackPolicy::Direct,
+            fallback: FallbackPolicy::Proxy,
             auto_update_hours: 24,
             follow_system_theme: false,
             theme_color: "cyan".to_owned(),
@@ -65,9 +70,11 @@ impl Default for AppSettings {
             auto_switch_on_failure: true,
             speed_test_interval: SpeedTestInterval::Every1Hour,
             dns_guard_enabled: true,
-            ipv6_enabled: true,
+            ipv6_enabled: false,
             udp_acceleration_enabled: true,
             allow_lan: true,
+            app_rules_enabled: true,
+            block_ads_enabled: false,
             experimental_quic: false,
             custom_dns_servers: Vec::new(),
             fake_ip_v4_range: "198.18.0.0/15".to_owned(),
@@ -87,8 +94,10 @@ impl Default for AppSettings {
                 "fc00::/7".to_owned(),
                 "fe80::/10".to_owned(),
             ],
+            user_route_rules: Vec::new(),
             converter_url: None,
             resume_after_elevation: false,
+            rule_defaults_migrated: true,
             subscriptions: Vec::new(),
         }
     }
@@ -258,6 +267,62 @@ pub struct SingboxReleaseInfo {
     pub asset_size: Option<u64>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct IpCheckResult {
+    pub checked_at: u64,
+    pub ipv4: IpCheckCard,
+    pub connectivity: Vec<IpConnectivityResult>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct IpCheckRequest {
+    #[serde(default)]
+    pub custom_targets: Vec<IpConnectivityTarget>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct IpConnectivityTarget {
+    pub id: String,
+    pub name: String,
+    pub url: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct IpCheckCard {
+    pub version: String,
+    pub source: String,
+    pub available: bool,
+    pub ip: Option<String>,
+    pub country: Option<String>,
+    pub region: Option<String>,
+    pub city: Option<String>,
+    pub network: Option<String>,
+    pub usage_type: Option<String>,
+    pub proxy: Option<String>,
+    pub native: Option<String>,
+    pub quality_score: Option<String>,
+    pub asn: Option<String>,
+    pub message: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct IpConnectivityResult {
+    pub id: String,
+    pub name: String,
+    pub status: String,
+    pub latency_ms: Option<u64>,
+    pub message: Option<String>,
+}
+
 fn default_true() -> bool {
     true
+}
+
+fn default_false() -> bool {
+    false
 }

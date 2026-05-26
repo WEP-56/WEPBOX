@@ -35,6 +35,12 @@ const QUIC_INITIAL_PACKET_SIZE: u64 = 1252;
 const RS_GEOSITE_CN: &str = "geosite-cn";
 const RS_GEOSITE_GEOLOCATION_NOT_CN: &str = "geosite-geolocation-!cn";
 const RS_GEOSITE_PRIVATE: &str = "geosite-private";
+const RS_GEOSITE_ADS: &str = "geosite-category-ads-all";
+const RS_GEOSITE_TELEGRAM: &str = "geosite-telegram";
+const RS_GEOSITE_YOUTUBE: &str = "geosite-youtube";
+const RS_GEOSITE_NETFLIX: &str = "geosite-netflix";
+const RS_GEOSITE_OPENAI: &str = "geosite-openai";
+const RS_GEOSITE_GOOGLE: &str = "geosite-google";
 const RS_GEOIP_CN: &str = "geoip-cn";
 
 const PRIVATE_IP_CIDRS: &[&str] = &[
@@ -116,7 +122,8 @@ pub fn load_or_create_settings(app: &AppHandle) -> Result<AppSettings> {
     let content = fs::read_to_string(&path).context("failed to read app settings")?;
     let mut settings: AppSettings =
         serde_json::from_str(&content).context("failed to parse app settings")?;
-    if sanitize_subscription_metadata(&mut settings) {
+    let migrated_rule_defaults = migrate_rule_defaults(&mut settings);
+    if sanitize_subscription_metadata(&mut settings) || migrated_rule_defaults {
         save_settings(app, &settings)?;
     }
     Ok(settings)
@@ -226,7 +233,7 @@ fn build_singbox_config(app: &AppHandle, settings: &AppSettings) -> Result<Value
         "experimental": {
             "cache_file": {
                 "enabled": true,
-                "store_rdrc": fake_dns_enabled
+                "store_fakeip": fake_dns_enabled
             },
             "clash_api": {
                 "external_controller": format!("127.0.0.1:{}", settings.clash_api_port),
@@ -249,7 +256,7 @@ fn build_singbox_config(app: &AppHandle, settings: &AppSettings) -> Result<Value
         "inbounds": inbounds,
         "outbounds": outbounds,
         "route": {
-            "rule_set": build_rule_sets(),
+            "rule_set": build_rule_sets_for_settings(settings),
             "rules": route_rules,
             "final": route_final,
             "auto_detect_interface": true,
@@ -321,6 +328,10 @@ fn build_dns_rules(settings: &AppSettings) -> Vec<Value> {
         json!({ "rule_set": RS_GEOSITE_GEOLOCATION_NOT_CN, "server": DNS_REMOTE }),
     ];
 
+    if settings.block_ads_enabled {
+        rules.insert(2, json!({ "rule_set": RS_GEOSITE_ADS, "action": "reject" }));
+    }
+
     if settings.tun_enabled && settings.fake_dns_enabled {
         match settings.mode {
             ProxyMode::Global => {
@@ -368,9 +379,28 @@ fn build_route_rules(settings: &AppSettings) -> Vec<Value> {
         rules.push(json!({ "protocol": "dns", "action": "hijack-dns" }));
     }
 
+    rules.extend(settings.user_route_rules.iter().cloned());
+
     rules.extend([
         json!({ "clash_mode": "direct", "outbound": TAG_DIRECT }),
         json!({ "clash_mode": "global", "outbound": TAG_PROXY }),
+    ]);
+
+    if settings.block_ads_enabled {
+        rules.push(json!({ "rule_set": RS_GEOSITE_ADS, "action": "reject" }));
+    }
+
+    if settings.app_rules_enabled {
+        rules.extend([
+            json!({ "rule_set": RS_GEOSITE_TELEGRAM, "outbound": TAG_PROXY }),
+            json!({ "rule_set": RS_GEOSITE_YOUTUBE, "outbound": TAG_PROXY }),
+            json!({ "rule_set": RS_GEOSITE_NETFLIX, "outbound": TAG_PROXY }),
+            json!({ "rule_set": RS_GEOSITE_OPENAI, "outbound": TAG_PROXY }),
+            json!({ "rule_set": RS_GEOSITE_GOOGLE, "outbound": TAG_PROXY }),
+        ]);
+    }
+
+    rules.extend([
         json!({ "ip_cidr": PRIVATE_IP_CIDRS, "outbound": TAG_DIRECT }),
         json!({ "domain_suffix": ["lan", "local", "home.arpa"], "outbound": TAG_DIRECT }),
         json!({ "rule_set": RS_GEOSITE_PRIVATE, "outbound": TAG_DIRECT }),
@@ -388,8 +418,19 @@ fn build_route_rules(settings: &AppSettings) -> Vec<Value> {
     rules
 }
 
-fn build_rule_sets() -> Vec<Value> {
-    vec![
+fn build_rule_sets_for_settings(settings: &AppSettings) -> Vec<Value> {
+    let mut rule_sets = Vec::new();
+
+    if settings.block_ads_enabled {
+        rule_sets.push(remote_rule_set(
+            RS_GEOSITE_ADS,
+            "https://gh-proxy.com/https://raw.githubusercontent.com/SagerNet/sing-geosite/rule-set/geosite-category-ads-all.srs",
+            TAG_DIRECT,
+            "1d",
+        ));
+    }
+
+    rule_sets.extend([
         remote_rule_set(
             RS_GEOSITE_PRIVATE,
             "https://gh-proxy.com/https://raw.githubusercontent.com/SagerNet/sing-geosite/rule-set/geosite-private.srs",
@@ -414,7 +455,44 @@ fn build_rule_sets() -> Vec<Value> {
             TAG_DIRECT,
             "1d",
         ),
-    ]
+    ]);
+
+    if settings.app_rules_enabled {
+        rule_sets.extend([
+            remote_rule_set(
+                RS_GEOSITE_TELEGRAM,
+                "https://gh-proxy.com/https://raw.githubusercontent.com/SagerNet/sing-geosite/rule-set/geosite-telegram.srs",
+                TAG_DIRECT,
+                "7d",
+            ),
+            remote_rule_set(
+                RS_GEOSITE_YOUTUBE,
+                "https://gh-proxy.com/https://raw.githubusercontent.com/SagerNet/sing-geosite/rule-set/geosite-youtube.srs",
+                TAG_DIRECT,
+                "7d",
+            ),
+            remote_rule_set(
+                RS_GEOSITE_NETFLIX,
+                "https://gh-proxy.com/https://raw.githubusercontent.com/SagerNet/sing-geosite/rule-set/geosite-netflix.srs",
+                TAG_DIRECT,
+                "7d",
+            ),
+            remote_rule_set(
+                RS_GEOSITE_OPENAI,
+                "https://gh-proxy.com/https://raw.githubusercontent.com/SagerNet/sing-geosite/rule-set/geosite-openai.srs",
+                TAG_DIRECT,
+                "7d",
+            ),
+            remote_rule_set(
+                RS_GEOSITE_GOOGLE,
+                "https://gh-proxy.com/https://raw.githubusercontent.com/SagerNet/sing-geosite/rule-set/geosite-google.srs",
+                TAG_DIRECT,
+                "7d",
+            ),
+        ]);
+    }
+
+    rule_sets
 }
 
 fn remote_rule_set(tag: &str, url: &str, download_detour: &str, update_interval: &str) -> Value {
@@ -724,6 +802,18 @@ fn sanitize_subscription_metadata(settings: &mut AppSettings) -> bool {
     changed
 }
 
+fn migrate_rule_defaults(settings: &mut AppSettings) -> bool {
+    if settings.rule_defaults_migrated {
+        return false;
+    }
+
+    if matches!(settings.fallback, FallbackPolicy::Direct) {
+        settings.fallback = FallbackPolicy::Proxy;
+    }
+    settings.rule_defaults_migrated = true;
+    true
+}
+
 fn is_reserved_subscription_tag(tag: &str) -> bool {
     matches!(
         tag.trim(),
@@ -782,9 +872,9 @@ fn is_informational_tag_clean(tag: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::{
-        build_dns_rules, build_dns_server, build_route_rules, build_tun_inbound,
-        normalize_imported_outbound, DNS_FAKEIP, DNS_RESOLVER, QUIC_INITIAL_PACKET_SIZE,
-        TAG_DIRECT, UDP_CONNECT_TIMEOUT,
+        build_dns_rules, build_dns_server, build_route_rules, build_rule_sets_for_settings,
+        build_tun_inbound, normalize_imported_outbound, DNS_FAKEIP, DNS_RESOLVER,
+        QUIC_INITIAL_PACKET_SIZE, TAG_DIRECT, UDP_CONNECT_TIMEOUT,
     };
     use crate::models::{AppSettings, ProxyMode};
 
@@ -974,9 +1064,133 @@ mod tests {
     fn rule_mode_keeps_direct_fallback_available() {
         let settings = AppSettings {
             mode: ProxyMode::Rule,
+            fallback: crate::models::FallbackPolicy::Direct,
             ..AppSettings::default()
         };
         assert!(build_tun_inbound(&settings).get("type").is_some());
+    }
+
+    #[test]
+    fn rule_mode_defaults_to_proxy_fallback() {
+        let settings = AppSettings::default();
+        assert!(matches!(
+            settings.fallback,
+            crate::models::FallbackPolicy::Proxy
+        ));
+    }
+
+    #[test]
+    fn ipv6_is_opt_in_by_default() {
+        let settings = AppSettings::default();
+        assert!(!settings.ipv6_enabled);
+    }
+
+    #[test]
+    fn old_rule_defaults_migrate_direct_fallback_to_proxy_once() {
+        let mut settings = AppSettings {
+            fallback: crate::models::FallbackPolicy::Direct,
+            rule_defaults_migrated: false,
+            ..AppSettings::default()
+        };
+
+        assert!(super::migrate_rule_defaults(&mut settings));
+        assert!(matches!(
+            settings.fallback,
+            crate::models::FallbackPolicy::Proxy
+        ));
+        assert!(settings.rule_defaults_migrated);
+
+        settings.fallback = crate::models::FallbackPolicy::Direct;
+        assert!(!super::migrate_rule_defaults(&mut settings));
+        assert!(matches!(
+            settings.fallback,
+            crate::models::FallbackPolicy::Direct
+        ));
+    }
+
+    #[test]
+    fn user_route_rules_are_inserted_before_builtin_rules() {
+        let settings = AppSettings {
+            user_route_rules: vec![serde_json::json!({
+                "domain_suffix": "example.com",
+                "outbound": "PROXY"
+            })],
+            ..AppSettings::default()
+        };
+
+        let rules = build_route_rules(&settings);
+        let user_idx = rules
+            .iter()
+            .position(|rule| rule.get("domain_suffix").is_some())
+            .expect("user rule should be present");
+        let builtin_cn_idx = rules
+            .iter()
+            .position(|rule| {
+                rule.get("rule_set")
+                    .and_then(serde_json::Value::as_array)
+                    .is_some()
+                    && rule.get("outbound").and_then(serde_json::Value::as_str) == Some(TAG_DIRECT)
+            })
+            .expect("builtin cn rule should be present");
+
+        assert!(user_idx < builtin_cn_idx);
+    }
+
+    #[test]
+    fn app_rules_toggle_controls_service_rule_sets() {
+        let enabled = AppSettings {
+            app_rules_enabled: true,
+            ..AppSettings::default()
+        };
+        let disabled = AppSettings {
+            app_rules_enabled: false,
+            ..AppSettings::default()
+        };
+
+        let enabled_rules = build_route_rules(&enabled);
+        assert!(enabled_rules.iter().any(|rule| {
+            rule.get("rule_set").and_then(serde_json::Value::as_str) == Some("geosite-google")
+        }));
+        assert!(build_rule_sets_for_settings(&enabled)
+            .iter()
+            .any(|rule_set| {
+                rule_set.get("tag").and_then(serde_json::Value::as_str) == Some("geosite-google")
+            }));
+
+        let disabled_rules = build_route_rules(&disabled);
+        assert!(!disabled_rules.iter().any(|rule| {
+            rule.get("rule_set").and_then(serde_json::Value::as_str) == Some("geosite-google")
+        }));
+        assert!(!build_rule_sets_for_settings(&disabled)
+            .iter()
+            .any(|rule_set| {
+                rule_set.get("tag").and_then(serde_json::Value::as_str) == Some("geosite-google")
+            }));
+    }
+
+    #[test]
+    fn ads_toggle_adds_dns_route_and_rule_set_entries() {
+        let settings = AppSettings {
+            block_ads_enabled: true,
+            ..AppSettings::default()
+        };
+
+        assert!(build_dns_rules(&settings).iter().any(|rule| {
+            rule.get("rule_set").and_then(serde_json::Value::as_str)
+                == Some("geosite-category-ads-all")
+                && rule.get("action").and_then(serde_json::Value::as_str) == Some("reject")
+        }));
+        assert!(build_route_rules(&settings).iter().any(|rule| {
+            rule.get("rule_set").and_then(serde_json::Value::as_str)
+                == Some("geosite-category-ads-all")
+                && rule.get("action").and_then(serde_json::Value::as_str) == Some("reject")
+        }));
+        assert!(build_rule_sets_for_settings(&settings)
+            .iter()
+            .any(|rule_set| {
+                rule_set.get("tag").and_then(serde_json::Value::as_str)
+                    == Some("geosite-category-ads-all")
+            }));
     }
 
     #[test]
